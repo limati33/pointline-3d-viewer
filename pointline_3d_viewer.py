@@ -10,7 +10,7 @@ from tkinter import filedialog
 
 # Инициализация Pygame
 pygame.init()
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 1200, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("3D Projection with Rotation")
 FPS = 60
@@ -41,6 +41,8 @@ font = pygame.font.SysFont("arial", 20)
 # Переменные для управления мышью
 mouse_dragging = False
 last_mouse_pos = None
+camera_offset = [0.0, 0.0]  # Сдвиг "камеры" по X и Y
+right_mouse_dragging = False
 
 def rotate_point(x, y, z, ax, ay):
     """
@@ -56,12 +58,12 @@ def rotate_point(x, y, z, ax, ay):
     return x2, y2, z3
 
 def project_3d_to_2d(x, y, z):
-    """Project 3D coordinates to 2D with safeguards"""
+    """Project 3D coordinates to 2D with safeguards and camera offset"""
     factor = d / (d + z) if (d + z) != 0 else 1
-    factor = min(max(factor, -10), 10)  # Limit factor to prevent extreme scaling
-    x2d = x * factor * WIDTH / 4 + WIDTH / 2
-    y2d = -y * factor * HEIGHT / 4 + HEIGHT / 2
-    x2d = max(min(x2d, 32767), -32768)  # Clamp to signed short integer range
+    factor = min(max(factor, -10), 10)
+    x2d = x * factor * WIDTH / 4 + WIDTH / 2 + camera_offset[0]
+    y2d = -y * factor * HEIGHT / 4 + HEIGHT / 2 + camera_offset[1]
+    x2d = max(min(x2d, 32767), -32768)
     y2d = max(min(y2d, 32767), -32768)
     return x2d, y2d
 
@@ -74,6 +76,7 @@ def handle_input():
     global input_mode, current_point, coord_index
     global current_line, line_step, angle_x, angle_y, d
     global mouse_dragging, last_mouse_pos, current_delete
+    global right_mouse_dragging, camera_offset 
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -213,6 +216,9 @@ def handle_input():
             if event.button == 1:  # Левая кнопка мыши
                 mouse_dragging = True
                 last_mouse_pos = event.pos
+            elif event.button == 3:  # ПКМ
+                right_mouse_dragging = True
+                last_mouse_pos = event.pos
             elif event.button == 4:  # Прокрутка вверх
                 d = min(d + 0.5, 10)
             elif event.button == 5:  # Прокрутка вниз
@@ -222,12 +228,20 @@ def handle_input():
             if event.button == 1:  # Левая кнопка мыши отпущена
                 mouse_dragging = False
                 last_mouse_pos = None
+            elif event.button == 3:
+                right_mouse_dragging = False
+                last_mouse_pos = None
 
-        elif event.type == pygame.MOUSEMOTION and mouse_dragging:
-            if last_mouse_pos is not None:
+        elif event.type == pygame.MOUSEMOTION:
+            if mouse_dragging and last_mouse_pos is not None:
                 dx, dy = event.pos[0] - last_mouse_pos[0], event.pos[1] - last_mouse_pos[1]
-                angle_y += dx * mouse_sensitivity  # Горизонтальное движение -> вращение вокруг Y
-                angle_x -= dy * mouse_sensitivity  # Вертикальное движение -> вращение вокруг X
+                angle_y += dx * mouse_sensitivity
+                angle_x -= dy * mouse_sensitivity
+                last_mouse_pos = event.pos
+            elif right_mouse_dragging and last_mouse_pos is not None:
+                dx, dy = event.pos[0] - last_mouse_pos[0], event.pos[1] - last_mouse_pos[1]
+                camera_offset[0] += dx
+                camera_offset[1] += dy
                 last_mouse_pos = event.pos
 
 def save_to_json():
@@ -321,6 +335,14 @@ def draw_scene():
     # Инструкция по управлению
     draw_text("Arrow keys or mouse drag - rotate, Mouse wheel - zoom", 10, HEIGHT-30)
     draw_text("S - save to JSON, O - open JSON file", 10, HEIGHT - 55)
+    # Список точек справа
+    x0 = WIDTH - 220
+    y0 = 10
+    draw_text("Points:", x0, y0, color=(200, 200, 50))
+    for i, pt in enumerate(points):
+        line = f"{i+1}. {pt[0]:.2f}/{pt[1]:.2f}/{pt[2]:.2f}"
+        draw_text(line, x0, y0 + 25 + i * 20, color=(180, 180, 180))
+
     pygame.display.flip()
 
 async def main():
