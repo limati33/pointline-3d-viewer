@@ -31,7 +31,7 @@ current_point = {"x": "", "y": "", "z": ""}
 coord_order = ["x", "y", "z"]
 coord_index = 0
 
-current_line = {"p1": None, "p2": None}
+current_line = {"p1": "", "p2": ""}
 line_step = 1
 
 current_delete = None  # индекс точки для удаления
@@ -72,7 +72,6 @@ def draw_text(text, x, y, color=(255,255,255)):
     screen.blit(surf, (x, y))
 
 def handle_input():
-    """Обработка событий ввода: клавиши, мышь"""
     global input_mode, current_point, coord_index
     global current_line, line_step, angle_x, angle_y, d
     global mouse_dragging, last_mouse_pos, current_delete
@@ -84,7 +83,7 @@ def handle_input():
             exit()
 
         elif event.type == pygame.KEYDOWN:
-            # Вращение по стрелкам
+            # Вращение
             if event.key == pygame.K_LEFT:
                 angle_y -= rotation_speed
             elif event.key == pygame.K_RIGHT:
@@ -94,19 +93,23 @@ def handle_input():
             elif event.key == pygame.K_DOWN:
                 angle_x += rotation_speed
 
-            # Переключение режимов и ввод точек/линий/удаление
+            # Масштабирование клавишами
+            elif event.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
+                d = min(d + 0.5, 10)
+            elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                d = max(d - 0.5, 1)
+
+            # Ввод точек
             if input_mode == "point":
                 coord = coord_order[coord_index]
                 if event.key == pygame.K_RETURN:
                     if current_point[coord] != "":
                         coord_index += 1
                         if coord_index >= 3:
-                            # добавляем точку
                             try:
                                 x = float(current_point['x'])
                                 y = float(current_point['y'])
                                 z = float(current_point['z'])
-                                # Restrict coordinate range
                                 if abs(x) > 1000 or abs(y) > 1000 or abs(z) > 1000:
                                     raise ValueError("Coordinates must be between -1000 and 1000")
                                 points.append((x, y, z))
@@ -117,87 +120,79 @@ def handle_input():
                 elif event.key == pygame.K_BACKSPACE:
                     current_point[coord] = current_point[coord][:-1]
                 elif event.key == pygame.K_l:
-                    # переключиться на ввод линии
                     input_mode = "line"
-                    current_line = {"p1": None, "p2": None}
+                    current_line = {"p1": "", "p2": ""}
                     line_step = 1
                 elif event.key == pygame.K_d:
-                    # переключиться на режим удаления
                     input_mode = "delete"
                     current_delete = None
                 else:
                     if event.unicode.isdigit() or event.unicode in '.-':
                         current_point[coord] += event.unicode
 
+            # Ввод линий
             elif input_mode == "line":
                 if event.key == pygame.K_RETURN:
-                    if current_line['p1'] is not None and current_line['p2'] is not None:
-                        new_line = (current_line['p1'], current_line['p2'])
-                        reverse_line = (current_line['p2'], current_line['p1'])
-                        # Проверяем, существует ли линия
-                        if new_line in lines or reverse_line in lines:
-                            # Удаляем линию, если она уже существует
+                    if line_step == 1 and current_line['p1'].isdigit():
+                        idx = int(current_line['p1']) - 1
+                        if 0 <= idx < len(points):
+                            current_line['p1'] = idx
+                            line_step = 2
+                    elif line_step == 2 and current_line['p2'].isdigit():
+                        idx = int(current_line['p2']) - 1
+                        if 0 <= idx < len(points):
+                            current_line['p2'] = idx
+                            p1 = current_line['p1']
+                            p2 = current_line['p2']
+                            new_line = (p1, p2)
+                            rev_line = (p2, p1)
                             if new_line in lines:
                                 lines.remove(new_line)
-                            elif reverse_line in lines:
-                                lines.remove(reverse_line)
-                        else:
-                            # Добавляем новую линию
-                            lines.append(new_line)
-                        input_mode = "point"
-                        current_line = {"p1": None, "p2": None}
-                        line_step = 1
+                            elif rev_line in lines:
+                                lines.remove(rev_line)
+                            else:
+                                lines.append(new_line)
+                            input_mode = "point"
+                            current_line = {"p1": "", "p2": ""}
+                            line_step = 1
                 elif event.key == pygame.K_BACKSPACE:
-                    if line_step == 2:
-                        current_line['p2'] = None
-                        line_step = 2
-                    else:
-                        current_line['p1'] = None
-                        line_step = 1
+                    if line_step == 1:
+                        current_line['p1'] = current_line['p1'][:-1]
+                    elif line_step == 2:
+                        current_line['p2'] = current_line['p2'][:-1]
                 elif event.key == pygame.K_l:
-                    # переключиться на ввод точек
                     input_mode = "point"
-                    current_line = {"p1": None, "p2": None}
+                    current_line = {"p1": "", "p2": ""}
                     line_step = 1
                 elif event.key == pygame.K_d:
-                    # переключиться на режим удаления
                     input_mode = "delete"
-                    current_line = {"p1": None, "p2": None}
-                    line_step = 1
                     current_delete = None
                 else:
                     if event.unicode.isdigit():
-                        idx = int(event.unicode) - 1
-                        if 0 <= idx < len(points):
-                            if line_step == 1:
-                                current_line['p1'] = idx
-                                line_step = 2
-                            elif line_step == 2:
-                                current_line['p2'] = idx
+                        if line_step == 1:
+                            current_line['p1'] += event.unicode
+                        elif line_step == 2:
+                            current_line['p2'] += event.unicode
 
+            # Удаление точек
             elif input_mode == "delete":
                 if event.key == pygame.K_RETURN:
                     if current_delete is not None:
                         idx = current_delete
                         if 0 <= idx < len(points):
-                            # Удаляем точку
                             points.pop(idx)
-                            # Удаляем все линии, связанные с этой точкой
                             lines[:] = [(p1, p2) for p1, p2 in lines if p1 != idx and p2 != idx]
-                            # Обновляем индексы линий для оставшихся точек
-                            lines[:] = [(p1 - 1 if p1 > idx else p1, p2 - 1 if p2 > idx else p2) for p1, p2 in lines]
+                            lines[:] = [(p1 - (1 if p1 > idx else 0), p2 - (1 if p2 > idx else 0)) for p1, p2 in lines]
                         input_mode = "point"
                         current_delete = None
                 elif event.key == pygame.K_BACKSPACE:
                     current_delete = None
                 elif event.key == pygame.K_l:
-                    # переключиться на ввод линии
                     input_mode = "line"
-                    current_line = {"p1": None, "p2": None}
+                    current_line = {"p1": "", "p2": ""}
                     line_step = 1
                     current_delete = None
                 elif event.key == pygame.K_d:
-                    # переключиться на ввод точек
                     input_mode = "point"
                     current_delete = None
                 else:
@@ -206,26 +201,26 @@ def handle_input():
                         if 0 <= idx < len(points):
                             current_delete = idx
 
-            # Сохранение / Загрузка
+            # Сохранение / загрузка
             if event.key == pygame.K_s:
                 save_to_json()
             elif event.key == pygame.K_o:
                 load_from_json()
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # Левая кнопка мыши
+            if event.button == 1:
                 mouse_dragging = True
                 last_mouse_pos = event.pos
-            elif event.button == 3:  # ПКМ
+            elif event.button == 3:
                 right_mouse_dragging = True
                 last_mouse_pos = event.pos
-            elif event.button == 4:  # Прокрутка вверх
+            elif event.button == 4:
                 d = min(d + 0.5, 10)
-            elif event.button == 5:  # Прокрутка вниз
+            elif event.button == 5:
                 d = max(d - 0.5, 1)
 
         elif event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 1:  # Левая кнопка мыши отпущена
+            if event.button == 1:
                 mouse_dragging = False
                 last_mouse_pos = None
             elif event.button == 3:
@@ -233,12 +228,12 @@ def handle_input():
                 last_mouse_pos = None
 
         elif event.type == pygame.MOUSEMOTION:
-            if mouse_dragging and last_mouse_pos is not None:
+            if mouse_dragging and last_mouse_pos:
                 dx, dy = event.pos[0] - last_mouse_pos[0], event.pos[1] - last_mouse_pos[1]
                 angle_y += dx * mouse_sensitivity
                 angle_x -= dy * mouse_sensitivity
                 last_mouse_pos = event.pos
-            elif right_mouse_dragging and last_mouse_pos is not None:
+            elif right_mouse_dragging and last_mouse_pos:
                 dx, dy = event.pos[0] - last_mouse_pos[0], event.pos[1] - last_mouse_pos[1]
                 camera_offset[0] += dx
                 camera_offset[1] += dy
@@ -287,14 +282,34 @@ def load_from_json():
 
 def draw_scene():
     screen.fill((0,0,0))
+
     # Оси
     origin = project_3d_to_2d(*rotate_point(0,0,0, angle_x, angle_y))
     ox = project_3d_to_2d(*rotate_point(100,0,0, angle_x, angle_y))
     oy = project_3d_to_2d(*rotate_point(0,100,0, angle_x, angle_y))
     oz = project_3d_to_2d(*rotate_point(0,0,100, angle_x, angle_y))
+    ox_neg = project_3d_to_2d(*rotate_point(-100,0,0, angle_x, angle_y))
+    oy_neg = project_3d_to_2d(*rotate_point(0,-100,0, angle_x, angle_y))
+    oz_neg = project_3d_to_2d(*rotate_point(0,0,-100, angle_x, angle_y))
+
     pygame.draw.line(screen, (255,0,0), origin, ox, 2)
+    pygame.draw.line(screen, (255,0,0), origin, ox_neg, 2)
     pygame.draw.line(screen, (0,255,0), origin, oy, 2)
+    pygame.draw.line(screen, (0,255,0), origin, oy_neg, 2)
     pygame.draw.line(screen, (0,0,255), origin, oz, 2)
+    pygame.draw.line(screen, (0,0,255), origin, oz_neg, 2)
+
+    # Деления на осях
+    for axis, color, vec in [
+        ('x', (255, 0, 0), (1, 0, 0)),
+        ('y', (0, 255, 0), (0, 1, 0)),
+        ('z', (0, 0, 255), (0, 0, 1)),
+    ]:
+        for i in range(1, 101):
+            for sign in [-1, 1]:
+                dx, dy, dz = [v * i * sign for v in vec]
+                p = project_3d_to_2d(*rotate_point(dx, dy, dz, angle_x, angle_y))
+                draw_text(f"{i*sign}", p[0], p[1], color=color)
 
     # Метки осей
     draw_text("X: Red", 10, 60, color=(255, 0, 0))
@@ -314,8 +329,9 @@ def draw_scene():
         xr, yr, zr = rotate_point(*pt, angle_x, angle_y)
         xp, yp = project_3d_to_2d(xr, yr, zr)
         pygame.gfxdraw.filled_circle(screen, int(xp), int(yp), 5, (255,255,255))
-        # Показать номер точки и координаты
-        draw_text(f"{i+1}", xp+6, yp-8)
+        # Номер точки с фоном (негатив)
+        number_text = font.render(f"{i+1}", True, (255, 255, 255), (0, 0, 0))  # белый текст, чёрный фон
+        screen.blit(number_text, (xp + 6, yp - 8))
         draw_text(f"({pt[0]:.2f}, {pt[1]:.2f}, {pt[2]:.2f})", xp+6, yp+8)
 
     # Подсказки ввода
@@ -326,15 +342,15 @@ def draw_scene():
     elif input_mode == "line":
         p1 = current_line['p1']
         p2 = current_line['p2']
-        draw_text(f"[LINE] p1={p1+1 if p1 is not None else ''}, p2={p2+1 if p2 is not None else ''}", 10, 10)
-        draw_text("Enter - toggle line, Backspace - cancel, L - point mode, D - delete mode", 10, 35)
-    else:  # delete mode
+        draw_text(f"[LINE] p1={p1}, p2={p2}", 10, 10)
+        draw_text("Enter - confirm, Backspace - delete digit, L - point mode, D - delete mode", 10, 35)
+    else:
         draw_text(f"[DELETE] Enter point: {current_delete+1 if current_delete is not None else ''}", 10, 10)
         draw_text("Enter - delete point, Backspace - cancel, L - line mode, D - point mode", 10, 35)
 
-    # Инструкция по управлению
-    draw_text("Arrow keys or mouse drag - rotate, Mouse wheel - zoom", 10, HEIGHT-30)
+    draw_text("Arrow keys/mouse drag - rotate, Mouse wheel/+/- - zoom", 10, HEIGHT-30)
     draw_text("S - save to JSON, O - open JSON file", 10, HEIGHT - 55)
+
     # Список точек справа
     x0 = WIDTH - 220
     y0 = 10
