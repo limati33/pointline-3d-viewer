@@ -4,18 +4,19 @@ A simple 3D editor for creating points and lines in space. Supports rotation, sc
 
 ## Controls
 
-- **Arrows / Mouse** — model rotation
-- **Mouse wheel** — scale
-- **Modes:**
-- `POINT`: input coordinates
-- `LINE`: connect points
-- `DELETE`: delete points
-- **S** — save model in JSON
-- **O** — load model from JSON
+- **Arrows / Mouse drag** — model rotation  
+- **Mouse wheel** or **+ / -** — scale  
+- **W / S** — move camera forward/back  
+- **Modes:**  
+  - `POINT`: input coordinates  
+  - `LINE`: connect points  
+  - `DELETE`: delete points  
+- **[** — save model in JSON  
+- **]** — load model from JSON  
 
 ## Dependencies
 
-- `pygame`
+- `pygame`  
 - `tkinter` (built into Python)
 
 =================================================
@@ -26,16 +27,17 @@ A simple 3D editor for creating points and lines in space. Supports rotation, sc
 
 ## Управление
 
-- **Стрелки / Мышь** — вращение модели
-- **Колёсико мыши** — масштаб
-- **Режимы:**
-  - `POINT`: ввод координат
-  - `LINE`: соединение точек
-  - `DELETE`: удаление точек
-- **S** — сохранить модель в JSON
-- **O** — загрузить модель из JSON
+- **Стрелки / Перетягивание мышью** — вращение модели  
+- **Колёсико мыши** или **+ / -** — масштаб  
+- **W / S** — перемещение камеры вперёд/назад  
+- **Режимы:**  
+  - `POINT`: ввод координат  
+  - `LINE`: соединение точек  
+  - `DELETE`: удаление точек  
+- **[** — сохранить модель в JSON  
+- **]** — загрузить модель из JSON  
 
 ## Зависимости
 
-- `pygame`
-- `tkinter` (встроен в Python)
+- `pygame`  
+- `tkinter` (встроен в Python)  

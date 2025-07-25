@@ -41,7 +41,7 @@ font = pygame.font.SysFont("arial", 20)
 # Переменные для управления мышью
 mouse_dragging = False
 last_mouse_pos = None
-camera_offset = [0.0, 0.0]  # Сдвиг "камеры" по X и Y
+camera_pos = [0.0, 0.0, -5.0]  # камера чуть "позади"
 right_mouse_dragging = False
 
 def rotate_point(x, y, z, ax, ay):
@@ -58,11 +58,15 @@ def rotate_point(x, y, z, ax, ay):
     return x2, y2, z3
 
 def project_3d_to_2d(x, y, z):
-    """Project 3D coordinates to 2D with safeguards and camera offset"""
+    # сдвиг относительно камеры
+    x -= camera_pos[0]
+    y -= camera_pos[1]
+    z -= camera_pos[2]
+
     factor = d / (d + z) if (d + z) != 0 else 1
     factor = min(max(factor, -10), 10)
-    x2d = x * factor * WIDTH / 4 + WIDTH / 2 + camera_offset[0]
-    y2d = -y * factor * HEIGHT / 4 + HEIGHT / 2 + camera_offset[1]
+    x2d = x * factor * WIDTH / 4 + WIDTH / 2
+    y2d = -y * factor * HEIGHT / 4 + HEIGHT / 2
     x2d = max(min(x2d, 32767), -32768)
     y2d = max(min(y2d, 32767), -32768)
     return x2d, y2d
@@ -75,7 +79,7 @@ def handle_input():
     global input_mode, current_point, coord_index
     global current_line, line_step, angle_x, angle_y, d
     global mouse_dragging, last_mouse_pos, current_delete
-    global right_mouse_dragging, camera_offset 
+    global right_mouse_dragging, camera_pos
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -83,23 +87,7 @@ def handle_input():
             exit()
 
         elif event.type == pygame.KEYDOWN:
-            # Вращение
-            if event.key == pygame.K_LEFT:
-                angle_y -= rotation_speed
-            elif event.key == pygame.K_RIGHT:
-                angle_y += rotation_speed
-            elif event.key == pygame.K_UP:
-                angle_x -= rotation_speed
-            elif event.key == pygame.K_DOWN:
-                angle_x += rotation_speed
-
-            # Масштабирование клавишами
-            elif event.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
-                d = min(d + 0.5, 10)
-            elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                d = max(d - 0.5, 1)
-
-            # Ввод точек
+            # Режимы управления — одноразовые
             if input_mode == "point":
                 coord = coord_order[coord_index]
                 if event.key == pygame.K_RETURN:
@@ -130,7 +118,6 @@ def handle_input():
                     if event.unicode.isdigit() or event.unicode in '.-':
                         current_point[coord] += event.unicode
 
-            # Ввод линий
             elif input_mode == "line":
                 if event.key == pygame.K_RETURN:
                     if line_step == 1 and current_line['p1'].isdigit():
@@ -174,7 +161,6 @@ def handle_input():
                         elif line_step == 2:
                             current_line['p2'] += event.unicode
 
-            # Удаление точек
             elif input_mode == "delete":
                 if event.key == pygame.K_RETURN:
                     if current_delete is not None:
@@ -191,7 +177,6 @@ def handle_input():
                     input_mode = "line"
                     current_line = {"p1": "", "p2": ""}
                     line_step = 1
-                    current_delete = None
                 elif event.key == pygame.K_d:
                     input_mode = "point"
                     current_delete = None
@@ -202,9 +187,9 @@ def handle_input():
                             current_delete = idx
 
             # Сохранение / загрузка
-            if event.key == pygame.K_s:
+            if event.key == pygame.K_LEFTBRACKET:
                 save_to_json()
-            elif event.key == pygame.K_o:
+            elif event.key == pygame.K_RIGHTBRACKET:
                 load_from_json()
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -235,9 +220,31 @@ def handle_input():
                 last_mouse_pos = event.pos
             elif right_mouse_dragging and last_mouse_pos:
                 dx, dy = event.pos[0] - last_mouse_pos[0], event.pos[1] - last_mouse_pos[1]
-                camera_offset[0] += dx
-                camera_offset[1] += dy
+                camera_pos[0] -= dx * 0.01
+                camera_pos[1] += dy * 0.01
                 last_mouse_pos = event.pos
+
+    # Обработка зажатых клавиш
+    keys = pygame.key.get_pressed()
+
+    if keys[pygame.K_w]:
+        camera_pos[2] += 0.2
+    if keys[pygame.K_s]:
+        camera_pos[2] -= 0.2
+
+    if keys[pygame.K_EQUALS] or keys[pygame.K_KP_PLUS]:
+        d = min(d + 0.1, 10)
+    if keys[pygame.K_MINUS] or keys[pygame.K_KP_MINUS]:
+        d = max(d - 0.1, 1)
+
+    if keys[pygame.K_LEFT]:
+        angle_y -= rotation_speed
+    if keys[pygame.K_RIGHT]:
+        angle_y += rotation_speed
+    if keys[pygame.K_UP]:
+        angle_x -= rotation_speed
+    if keys[pygame.K_DOWN]:
+        angle_x += rotation_speed
 
 def save_to_json():
     try:
@@ -349,7 +356,7 @@ def draw_scene():
         draw_text("Enter - delete point, Backspace - cancel, L - line mode, D - point mode", 10, 35)
 
     draw_text("Arrow keys/mouse drag - rotate, Mouse wheel/+/- - zoom", 10, HEIGHT-30)
-    draw_text("S - save to JSON, O - open JSON file", 10, HEIGHT - 55)
+    draw_text("[ - save to JSON, ] - open JSON file", 10, HEIGHT - 55)
 
     # Список точек справа
     x0 = WIDTH - 220
