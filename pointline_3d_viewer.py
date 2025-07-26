@@ -49,6 +49,7 @@ mouse_sensitivity = 0.005  # чувствительность мыши для в
 points = []  # список 3D-точек
 lines = []   # список соединений (pairs of point indices)
 polygons = []  # список полигонов: [{"indices": [0,1,2,3], "filled": False}, ...]
+curves = []
 
 # Режим ввода: 'point', 'line', 'delete', 'polygon', 'fill'
 input_mode = "point"
@@ -66,6 +67,11 @@ polygon_step = 1
 
 current_fill = ""  # строка для ввода индекса полигона в режиме fill
 point_index_input = ""  # строка для ввода индекса точки в режиме polygon
+
+current_curve = {"p0": "", "p1": "", "p2": ""}
+curve_step = 1
+curve_input = ""               # буфер ввода для curve
+curve_color = (255,128,0)
 
 # Переменные для управления мышью
 mouse_dragging = False
@@ -104,6 +110,7 @@ def handle_input():
     global mouse_dragging, last_mouse_pos, current_delete
     global right_mouse_dragging, camera_pos, show_labels
     global current_polygon, polygon_step, current_fill, point_index_input
+    global curve_input, curve_step, current_curve
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -149,6 +156,11 @@ def handle_input():
                 elif event.key == pygame.K_f:
                     input_mode = "fill"
                     current_fill = ""
+                elif event.key == pygame.K_c:
+                    input_mode = "curve"
+                    current_curve = {"p0": "", "p1": "", "p2": ""}  # словарь, а не список
+                    curve_step = 1
+                    curve_input = ""  # сброс буфера
                 else:
                     if event.unicode.isdigit() or event.unicode in '.-':
                         current_point[coord] += event.unicode
@@ -335,6 +347,57 @@ def handle_input():
                     if event.unicode.isdigit():
                         current_fill += event.unicode
 
+            elif input_mode == "curve":
+                if event.key == pygame.K_RETURN:
+                    # если в буфере ещё число — примем его
+                    if curve_input.strip().isdigit():
+                        idx = int(curve_input.strip()) - 1
+                        if 0 <= idx < len(points):
+                            current_curve[f"p{curve_step-1}"] = idx
+                    curve_input = ""
+
+                    # если набрали все три — сохраняем/удаляем кривую
+                    if curve_step == 3 and all(str(current_curve[k]).isdigit() for k in ("p0","p1","p2")):
+                        key = (current_curve["p0"], current_curve["p1"], current_curve["p2"])
+                        exists = [tuple(c.values()) for c in curves]
+                        if key in exists:
+                            curves[:] = [c for c in curves if tuple(c.values()) != key]
+                        else:
+                            curves.append(current_curve.copy())
+                        # сброс
+                        current_curve = {"p0": "", "p1": "", "p2": ""}
+                        curve_step = 1
+                    else:
+                        # готовимся к вводу следующей точки
+                        curve_step = min(curve_step + 1, 3)
+
+                elif event.key == pygame.K_BACKSPACE:
+                    if curve_input:
+                        curve_input = curve_input[:-1]
+                    elif curve_step > 1:
+                        # откат шага и очистка предыдущего значения
+                        curve_step -= 1
+                        current_curve[f"p{curve_step-1}"] = ""
+                    else:
+                        input_mode = "point"
+
+                elif event.key in (pygame.K_SPACE,) or event.unicode == ',':
+                    # завершить ввод текущего числа
+                    if curve_input.strip().isdigit():
+                        idx = int(curve_input.strip()) - 1
+                        if 0 <= idx < len(points):
+                            current_curve[f"p{curve_step-1}"] = idx
+                            curve_step = min(curve_step + 1, 3)
+                    curve_input = ""
+
+                elif event.key == pygame.K_p:
+                    input_mode = "point"
+
+                else:
+                    # накапливаем цифры
+                    if event.unicode.isdigit():
+                        curve_input += event.unicode
+
             if event.key == pygame.K_LEFTBRACKET:
                 save_to_json()
             elif event.key == pygame.K_RIGHTBRACKET:
@@ -480,6 +543,21 @@ def draw_scene():
             screen.blit(number_text, (xp + 6, yp - 8))
             draw_text(f"({pt[0]:.2f}, {pt[1]:.2f}, {pt[2]:.2f})", xp+6, yp+8)
 
+    # после точек и линий, до HUD
+    for curve in curves:
+        # получить Screen-координаты трёх точек
+        P = []
+        for key in ("p0","p1","p2"):
+            pt = points[curve[key]]
+            P.append(project_3d_to_2d(*rotate_point(*pt, angle_x, angle_y)))
+        last = P[0]
+        for t_step in range(1, 101):
+            t = t_step / 100
+            x = (1-t)**2*P[0][0] + 2*(1-t)*t*P[1][0] + t**2*P[2][0]
+            y = (1-t)**2*P[0][1] + 2*(1-t)*t*P[1][1] + t**2*P[2][1]
+            pygame.draw.line(screen, curve_color, last, (x,y), 2)
+            last = (x,y)
+
     if show_labels:
         # Деления на осях
         for axis, color, vec in [
@@ -487,7 +565,7 @@ def draw_scene():
             ('y', (0, 255, 0), (0, 1, 0)),
             ('z', (0, 0, 255), (0, 0, 1)),
         ]:
-            for i in range(1, 21):  # Уменьшено для производительности
+            for i in range(1, 21):
                 for sign in [-1, 1]:
                     dx, dy, dz = [v * i * sign for v in vec]
                     p = project_3d_to_2d(*rotate_point(dx, dy, dz, angle_x, angle_y))
@@ -518,6 +596,14 @@ def draw_scene():
         elif input_mode == "fill":
             draw_text(f"[FILL] Enter polygon: {current_fill}", 10, 10)
             draw_text("Enter - toggle fill, Backspace - delete digit, L - line, D - delete, P - polygon, F - point", 10, 35)
+        elif input_mode == "curve":
+            # выводим, какие точки уже выбраны и что в буфере
+            c0 = current_curve['p0']
+            c1 = current_curve['p1']
+            c2 = current_curve['p2']
+            buf = curve_input
+            draw_text(f"[CURVE] p0={c0}, p1={c1}, p2={c2}", 10, 10)
+            draw_text(f"Type index → Space/Comma → Next (step {curve_step}/3): {buf}", 10, 35)
 
         # Инструкция по управлению
         draw_text("Arrow keys/mouse drag - rotate, Mouse wheel/+/- - zoom, F1 - toggle labels", 10, HEIGHT-30)
@@ -538,6 +624,13 @@ def draw_scene():
             indices_str = f"({','.join(str(j+1) for j in poly['indices'])})"
             filled_str = "Yes" if poly["filled"] else "No"
             line = f"{i+1}. {indices_str} Filled: {filled_str}"
+            draw_text(line, x0, y0 + 25 + i * 20, color=(180, 180, 180))
+
+        # Список кривых
+        y0 = y0 + 25 + len(polygons) * 20 + 20
+        draw_text("Curves:", x0, y0, color=(200, 200, 50))
+        for i, curve in enumerate(curves):
+            line = f"{i+1}. ({curve['p0']+1},{curve['p1']+1},{curve['p2']+1})"
             draw_text(line, x0, y0 + 25 + i * 20, color=(180, 180, 180))
 
     pygame.display.flip()
