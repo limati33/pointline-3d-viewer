@@ -8,12 +8,36 @@ from math import cos, sin
 import tkinter as tk
 from tkinter import filedialog
 
+def interpolate(a, b, t):
+    return (a[0] + (b[0]-a[0])*t,
+            a[1] + (b[1]-a[1])*t,
+            a[2] + (b[2]-a[2])*t)
+
+def draw_poly_grid(poly_idx_list, steps=10):
+    verts = [points[i] for i in poly_idx_list]
+    A, B, C, D = verts
+    for i in range(steps+1):
+        t = i/steps
+        p_start = rotate_point(*interpolate(A, B, t), angle_x, angle_y)
+        p_end = rotate_point(*interpolate(D, C, t), angle_x, angle_y)
+        x1, y1 = project_3d_to_2d(*p_start)
+        x2, y2 = project_3d_to_2d(*p_end)
+        pygame.draw.line(screen, (200,200,200), (x1, y1), (x2, y2), 1)
+    for i in range(steps+1):
+        t = i/steps
+        p_start = rotate_point(*interpolate(A, D, t), angle_x, angle_y)
+        p_end = rotate_point(*interpolate(B, C, t), angle_x, angle_y)
+        x1, y1 = project_3d_to_2d(*p_start)
+        x2, y2 = project_3d_to_2d(*p_end)
+        pygame.draw.line(screen, (200,200,200), (x1, y1), (x2, y2), 1)
+
 # Инициализация Pygame
 pygame.init()
 WIDTH, HEIGHT = 1200, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("3D Projection with Rotation")
 FPS = 60
+font = pygame.font.SysFont("arial", 20)
 
 # Параметры проекции и вращения
 d = 4.0              # "расстояние" до экрана / коэффициент масштабирования
@@ -24,8 +48,9 @@ mouse_sensitivity = 0.005  # чувствительность мыши для в
 
 points = []  # список 3D-точек
 lines = []   # список соединений (pairs of point indices)
+polygons = []  # список полигонов: [{"indices": [0,1,2,3], "filled": False}, ...]
 
-# Режим ввода: 'point', 'line' или 'delete'
+# Режим ввода: 'point', 'line', 'delete', 'polygon', 'fill'
 input_mode = "point"
 current_point = {"x": "", "y": "", "z": ""}
 coord_order = ["x", "y", "z"]
@@ -36,7 +61,10 @@ line_step = 1
 
 current_delete = None  # индекс точки для удаления
 
-font = pygame.font.SysFont("arial", 20)
+current_polygon = []  # список индексов для текущего полигона
+polygon_step = 1
+
+current_fill = ""  # строка для ввода индекса полигона в режиме fill
 
 # Переменные для управления мышью
 mouse_dragging = False
@@ -44,25 +72,19 @@ last_mouse_pos = None
 camera_pos = [0.0, 0.0, -5.0]  # камера чуть "позади"
 right_mouse_dragging = False
 
+show_labels = True  # флаг для отображения текстовых меток
+
 def rotate_point(x, y, z, ax, ay):
-    """
-    Вращение точки вокруг осей X и Y.
-    Сначала вокруг X, потом вокруг Y.
-    """
-    # вращение вокруг X
     y2 = y * cos(ax) - z * sin(ax)
     z2 = y * sin(ax) + z * cos(ax)
-    # вращение вокруг Y
     x2 = x * cos(ay) + z2 * sin(ay)
     z3 = -x * sin(ay) + z2 * cos(ay)
     return x2, y2, z3
 
 def project_3d_to_2d(x, y, z):
-    # сдвиг относительно камеры
     x -= camera_pos[0]
     y -= camera_pos[1]
     z -= camera_pos[2]
-
     factor = d / (d + z) if (d + z) != 0 else 1
     factor = min(max(factor, -10), 10)
     x2d = x * factor * WIDTH / 4 + WIDTH / 2
@@ -79,7 +101,8 @@ def handle_input():
     global input_mode, current_point, coord_index
     global current_line, line_step, angle_x, angle_y, d
     global mouse_dragging, last_mouse_pos, current_delete
-    global right_mouse_dragging, camera_pos
+    global right_mouse_dragging, camera_pos, show_labels
+    global current_polygon, polygon_step, current_fill
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -87,7 +110,10 @@ def handle_input():
             exit()
 
         elif event.type == pygame.KEYDOWN:
-            # Режимы управления — одноразовые
+            if event.key == pygame.K_F1:
+                show_labels = not show_labels
+                continue
+
             if input_mode == "point":
                 coord = coord_order[coord_index]
                 if event.key == pygame.K_RETURN:
@@ -114,6 +140,13 @@ def handle_input():
                 elif event.key == pygame.K_d:
                     input_mode = "delete"
                     current_delete = None
+                elif event.key == pygame.K_p:
+                    input_mode = "polygon"
+                    current_polygon = []
+                    polygon_step = 1
+                elif event.key == pygame.K_f:
+                    input_mode = "fill"
+                    current_fill = ""
                 else:
                     if event.unicode.isdigit() or event.unicode in '.-':
                         current_point[coord] += event.unicode
@@ -121,32 +154,29 @@ def handle_input():
             elif input_mode == "line":
                 if event.key == pygame.K_RETURN:
                     if line_step == 1 and current_line['p1'].isdigit():
-                        idx = int(current_line['p1']) - 1
-                        if 0 <= idx < len(points):
-                            current_line['p1'] = idx
-                            line_step = 2
+                        line_step = 2
                     elif line_step == 2 and current_line['p2'].isdigit():
-                        idx = int(current_line['p2']) - 1
-                        if 0 <= idx < len(points):
-                            current_line['p2'] = idx
-                            p1 = current_line['p1']
-                            p2 = current_line['p2']
+                        p1 = int(current_line['p1']) - 1
+                        p2 = int(current_line['p2']) - 1
+                        if 0 <= p1 < len(points) and 0 <= p2 < len(points):
                             new_line = (p1, p2)
-                            rev_line = (p2, p1)
+                            rev = (p2, p1)
                             if new_line in lines:
                                 lines.remove(new_line)
-                            elif rev_line in lines:
-                                lines.remove(rev_line)
+                            elif rev in lines:
+                                lines.remove(rev)
                             else:
                                 lines.append(new_line)
-                            input_mode = "point"
-                            current_line = {"p1": "", "p2": ""}
-                            line_step = 1
+                        current_line = {"p1": "", "p2": ""}
+                        line_step = 1
                 elif event.key == pygame.K_BACKSPACE:
-                    if line_step == 1:
+                    if line_step == 1 and current_line['p1']:
                         current_line['p1'] = current_line['p1'][:-1]
-                    elif line_step == 2:
+                    elif line_step == 2 and current_line['p2']:
                         current_line['p2'] = current_line['p2'][:-1]
+                    elif line_step == 2:
+                        line_step = 1
+                        current_line['p2'] = ""
                 elif event.key == pygame.K_l:
                     input_mode = "point"
                     current_line = {"p1": "", "p2": ""}
@@ -154,6 +184,13 @@ def handle_input():
                 elif event.key == pygame.K_d:
                     input_mode = "delete"
                     current_delete = None
+                elif event.key == pygame.K_p:
+                    input_mode = "polygon"
+                    current_polygon = []
+                    polygon_step = 1
+                elif event.key == pygame.K_f:
+                    input_mode = "fill"
+                    current_fill = ""
                 else:
                     if event.unicode.isdigit():
                         if line_step == 1:
@@ -169,7 +206,7 @@ def handle_input():
                             points.pop(idx)
                             lines[:] = [(p1, p2) for p1, p2 in lines if p1 != idx and p2 != idx]
                             lines[:] = [(p1 - (1 if p1 > idx else 0), p2 - (1 if p2 > idx else 0)) for p1, p2 in lines]
-                        input_mode = "point"
+                            polygons[:] = [{"indices": [i - (1 if i > idx else 0) for i in poly["indices"]], "filled": poly["filled"]} for poly in polygons if idx not in poly["indices"]]
                         current_delete = None
                 elif event.key == pygame.K_BACKSPACE:
                     current_delete = None
@@ -180,13 +217,85 @@ def handle_input():
                 elif event.key == pygame.K_d:
                     input_mode = "point"
                     current_delete = None
+                elif event.key == pygame.K_p:
+                    input_mode = "polygon"
+                    current_polygon = []
+                    polygon_step = 1
+                elif event.key == pygame.K_f:
+                    input_mode = "fill"
+                    current_fill = ""
                 else:
                     if event.unicode.isdigit():
                         idx = int(event.unicode) - 1
                         if 0 <= idx < len(points):
                             current_delete = idx
 
-            # Сохранение / загрузка
+            elif input_mode == "polygon":
+                if event.key == pygame.K_RETURN:
+                    if len(current_polygon) >= 3:
+                        new_poly = {"indices": current_polygon, "filled": False}
+                        if tuple(current_polygon) in [tuple(p["indices"]) for p in polygons]:
+                            polygons[:] = [p for p in polygons if tuple(p["indices"]) != tuple(current_polygon)]
+                        else:
+                            polygons.append(new_poly)
+                        current_polygon = []
+                        polygon_step = 1
+                    elif current_polygon:
+                        polygon_step += 1
+                elif event.key == pygame.K_BACKSPACE:
+                    if current_polygon:
+                        current_polygon.pop()
+                        polygon_step = max(1, polygon_step - 1)
+                    else:
+                        input_mode = "point"
+                        polygon_step = 1
+                elif event.key == pygame.K_l:
+                    input_mode = "line"
+                    current_line = {"p1": "", "p2": ""}
+                    line_step = 1
+                elif event.key == pygame.K_d:
+                    input_mode = "delete"
+                    current_delete = None
+                elif event.key == pygame.K_p:
+                    input_mode = "point"
+                    current_polygon = []
+                    polygon_step = 1
+                elif event.key == pygame.K_f:
+                    input_mode = "fill"
+                    current_fill = ""
+                else:
+                    if event.unicode.isdigit():
+                        idx = int(event.unicode) - 1
+                        if 0 <= idx < len(points):
+                            current_polygon.append(idx)
+
+            elif input_mode == "fill":
+                if event.key == pygame.K_RETURN:
+                    if current_fill.isdigit():
+                        idx = int(current_fill) - 1
+                        if 0 <= idx < len(polygons):
+                            polygons[idx]["filled"] = not polygons[idx]["filled"]
+                    current_fill = ""
+                elif event.key == pygame.K_BACKSPACE:
+                    current_fill = current_fill[:-1]
+                elif event.key == pygame.K_l:
+                    input_mode = "line"
+                    current_line = {"p1": "", "p2": ""}
+                    line_step = 1
+                elif event.key == pygame.K_d:
+                    input_mode = "delete"
+                    current_delete = None
+                elif event.key == pygame.K_p:
+                    input_mode = "polygon"
+                    current_polygon = []
+                    polygon_step = 1
+                elif event.key == pygame.K_f:
+                    input_mode = "point"
+                    current_fill = ""
+                else:
+                    if event.unicode.isdigit():
+                        current_fill += event.unicode
+
             if event.key == pygame.K_LEFTBRACKET:
                 save_to_json()
             elif event.key == pygame.K_RIGHTBRACKET:
@@ -224,19 +333,15 @@ def handle_input():
                 camera_pos[1] += dy * 0.01
                 last_mouse_pos = event.pos
 
-    # Обработка зажатых клавиш
     keys = pygame.key.get_pressed()
-
     if keys[pygame.K_w]:
         camera_pos[2] += 0.2
     if keys[pygame.K_s]:
         camera_pos[2] -= 0.2
-
     if keys[pygame.K_EQUALS] or keys[pygame.K_KP_PLUS]:
         d = min(d + 0.1, 10)
     if keys[pygame.K_MINUS] or keys[pygame.K_KP_MINUS]:
         d = max(d - 0.1, 1)
-
     if keys[pygame.K_LEFT]:
         angle_y -= rotation_speed
     if keys[pygame.K_RIGHT]:
@@ -256,10 +361,11 @@ def save_to_json():
             title="Save as"
         )
         if not file_path:
-            return  # пользователь отменил
+            return
         data = {
             "points": points,
-            "lines": lines
+            "lines": lines,
+            "polygons": polygons
         }
         with open(file_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -268,7 +374,7 @@ def save_to_json():
         print(f"[✖] Failed to save: {e}")
 
 def load_from_json():
-    global points, lines
+    global points, lines, polygons
     try:
         root = tk.Tk()
         root.withdraw()
@@ -278,11 +384,12 @@ def load_from_json():
             title="Open file"
         )
         if not file_path:
-            return  # пользователь отменил
+            return
         with open(file_path, "r") as f:
             data = json.load(f)
-        points = [tuple(p) for p in data.get("points", [])]
-        lines = [tuple(l) for l in data.get("lines", [])]
+        points[:] = [tuple(p) for p in data.get("points", [])]
+        lines[:] = [tuple(l) for l in data.get("lines", [])]
+        polygons[:] = [{"indices": list(p["indices"]), "filled": p.get("filled", False)} for p in data.get("polygons", [])]
         print(f"[✔] Loaded from {file_path}")
     except Exception as e:
         print(f"[✖] Failed to load: {e}")
@@ -306,22 +413,15 @@ def draw_scene():
     pygame.draw.line(screen, (0,0,255), origin, oz, 2)
     pygame.draw.line(screen, (0,0,255), origin, oz_neg, 2)
 
-    # Деления на осях
-    for axis, color, vec in [
-        ('x', (255, 0, 0), (1, 0, 0)),
-        ('y', (0, 255, 0), (0, 1, 0)),
-        ('z', (0, 0, 255), (0, 0, 1)),
-    ]:
-        for i in range(1, 101):
-            for sign in [-1, 1]:
-                dx, dy, dz = [v * i * sign for v in vec]
-                p = project_3d_to_2d(*rotate_point(dx, dy, dz, angle_x, angle_y))
-                draw_text(f"{i*sign}", p[0], p[1], color=color)
-
-    # Метки осей
-    draw_text("X: Red", 10, 60, color=(255, 0, 0))
-    draw_text("Y: Green", 10, 85, color=(0, 255, 0))
-    draw_text("Z: Blue", 10, 110, color=(0, 0, 255))
+    # Полигоны
+    for i, poly in enumerate(polygons):
+        if len(poly["indices"]) >= 3:
+            verts = [points[j] for j in poly["indices"]]
+            proj_verts = [project_3d_to_2d(*rotate_point(*v, angle_x, angle_y)) for v in verts]
+            if poly["filled"]:
+                pygame.draw.polygon(screen, (100, 100, 100), proj_verts)
+            elif len(poly["indices"]) == 4:
+                draw_poly_grid(poly["indices"], steps=10)
 
     # Линии
     for p1, p2 in lines:
@@ -336,35 +436,70 @@ def draw_scene():
         xr, yr, zr = rotate_point(*pt, angle_x, angle_y)
         xp, yp = project_3d_to_2d(xr, yr, zr)
         pygame.gfxdraw.filled_circle(screen, int(xp), int(yp), 5, (255,255,255))
-        # Номер точки с фоном (негатив)
-        number_text = font.render(f"{i+1}", True, (255, 255, 255), (0, 0, 0))  # белый текст, чёрный фон
-        screen.blit(number_text, (xp + 6, yp - 8))
-        draw_text(f"({pt[0]:.2f}, {pt[1]:.2f}, {pt[2]:.2f})", xp+6, yp+8)
+        if show_labels:
+            number_text = font.render(f"{i+1}", True, (255, 255, 255), (0, 0, 0))
+            screen.blit(number_text, (xp + 6, yp - 8))
+            draw_text(f"({pt[0]:.2f}, {pt[1]:.2f}, {pt[2]:.2f})", xp+6, yp+8)
 
-    # Подсказки ввода
-    if input_mode == "point":
-        coord = coord_order[coord_index]
-        draw_text(f"[POINT] Enter {coord}: {current_point[coord]}", 10, 10)
-        draw_text("Enter - next, Backspace - delete, L - line mode, D - delete mode", 10, 35)
-    elif input_mode == "line":
-        p1 = current_line['p1']
-        p2 = current_line['p2']
-        draw_text(f"[LINE] p1={p1}, p2={p2}", 10, 10)
-        draw_text("Enter - confirm, Backspace - delete digit, L - point mode, D - delete mode", 10, 35)
-    else:
-        draw_text(f"[DELETE] Enter point: {current_delete+1 if current_delete is not None else ''}", 10, 10)
-        draw_text("Enter - delete point, Backspace - cancel, L - line mode, D - point mode", 10, 35)
+    if show_labels:
+        # Деления на осях
+        for axis, color, vec in [
+            ('x', (255, 0, 0), (1, 0, 0)),
+            ('y', (0, 255, 0), (0, 1, 0)),
+            ('z', (0, 0, 255), (0, 0, 1)),
+        ]:
+            for i in range(1, 21):  # Уменьшено для производительности
+                for sign in [-1, 1]:
+                    dx, dy, dz = [v * i * sign for v in vec]
+                    p = project_3d_to_2d(*rotate_point(dx, dy, dz, angle_x, angle_y))
+                    draw_text(f"{i*sign}", p[0], p[1], color=color)
 
-    draw_text("Arrow keys/mouse drag - rotate, Mouse wheel/+/- - zoom", 10, HEIGHT-30)
-    draw_text("[ - save to JSON, ] - open JSON file", 10, HEIGHT - 55)
+        # Метки осей
+        draw_text("X: Red", 10, 60, color=(255, 0, 0))
+        draw_text("Y: Green", 10, 85, color=(0, 255, 0))
+        draw_text("Z: Blue", 10, 110, color=(0, 0, 255))
 
-    # Список точек справа
-    x0 = WIDTH - 220
-    y0 = 10
-    draw_text("Points:", x0, y0, color=(200, 200, 50))
-    for i, pt in enumerate(points):
-        line = f"{i+1}. {pt[0]:.2f}/{pt[1]:.2f}/{pt[2]:.2f}"
-        draw_text(line, x0, y0 + 25 + i * 20, color=(180, 180, 180))
+        # Подсказки ввода
+        if input_mode == "point":
+            coord = coord_order[coord_index]
+            draw_text(f"[POINT] Enter {coord}: {current_point[coord]}", 10, 10)
+            draw_text("Enter - next, Backspace - delete, L - line, D - delete, P - polygon, F - fill", 10, 35)
+        elif input_mode == "line":
+            p1 = current_line['p1']
+            p2 = current_line['p2']
+            draw_text(f"[LINE] p1={p1}, p2={p2}", 10, 10)
+            draw_text("Enter - confirm, Backspace - delete digit, L - point, D - delete, P - polygon, F - fill", 10, 35)
+        elif input_mode == "delete":
+            draw_text(f"[DELETE] Enter point: {current_delete+1 if current_delete is not None else ''}", 10, 10)
+            draw_text("Enter - delete point, Backspace - cancel, L - line, D - point, P - polygon, F - fill", 10, 35)
+        elif input_mode == "polygon":
+            poly_str = ",".join(str(i+1) for i in current_polygon) if current_polygon else ""
+            draw_text(f"[POLYGON] Points: {poly_str}", 10, 10)
+            draw_text("Enter - add point/finish (>=3), Backspace - remove last, L - line, D - delete, P - point, F - fill", 10, 35)
+        elif input_mode == "fill":
+            draw_text(f"[FILL] Enter polygon: {current_fill}", 10, 10)
+            draw_text("Enter - toggle fill, Backspace - delete digit, L - line, D - delete, P - polygon, F - point", 10, 35)
+
+        # Инструкция по управлению
+        draw_text("Arrow keys/mouse drag - rotate, Mouse wheel/+/- - zoom, F1 - toggle labels", 10, HEIGHT-30)
+        draw_text("[ - save to JSON, ] - open JSON file", 10, HEIGHT-55)
+
+        # Список точек справа
+        x0 = WIDTH - 220
+        y0 = 10
+        draw_text("Points:", x0, y0, color=(200, 200, 50))
+        for i, pt in enumerate(points):
+            line = f"{i+1}. {pt[0]:.2f}/{pt[1]:.2f}/{pt[2]:.2f}"
+            draw_text(line, x0, y0 + 25 + i * 20, color=(180, 180, 180))
+
+        # Список полигонов
+        y0 = y0 + 25 + len(points) * 20 + 20
+        draw_text("Polygons:", x0, y0, color=(200, 200, 50))
+        for i, poly in enumerate(polygons):
+            indices_str = f"({','.join(str(j+1) for j in poly['indices'])})"
+            filled_str = "Yes" if poly["filled"] else "No"
+            line = f"{i+1}. {indices_str} Filled: {filled_str}"
+            draw_text(line, x0, y0 + 25 + i * 20, color=(180, 180, 180))
 
     pygame.display.flip()
 
@@ -373,7 +508,6 @@ async def main():
         handle_input()
         draw_scene()
         await asyncio.sleep(1/FPS)
-
 
 if platform.system() == "Emscripten":
     asyncio.ensure_future(main())
