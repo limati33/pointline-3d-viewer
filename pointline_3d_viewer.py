@@ -597,13 +597,23 @@ def draw_scene():
             draw_text(f"[FILL] Enter polygon: {current_fill}", 10, 10)
             draw_text("Enter - toggle fill, Backspace - delete digit, L - line, D - delete, P - polygon, F - point", 10, 35)
         elif input_mode == "curve":
-            # выводим, какие точки уже выбраны и что в буфере
             c0 = current_curve['p0']
             c1 = current_curve['p1']
             c2 = current_curve['p2']
             buf = curve_input
-            draw_text(f"[CURVE] p0={c0}, p1={c1}, p2={c2}", 10, 10)
-            draw_text(f"Type index → Space/Comma → Next (step {curve_step}/3): {buf}", 10, 35)
+            # Показываем выбранные индексы точек (если выбраны, иначе пусто)
+            selected_points = []
+            for idx in (c0, c1, c2):
+                if isinstance(idx, int) and 0 <= idx < len(points):
+                    selected_points.append(str(idx + 1))
+                else:
+                    selected_points.append("")
+            selected_str = ", ".join(selected_points)
+
+            draw_text(f"[CURVE] Points selected: {selected_str}", 10, 10)
+            draw_text(f"Input buffer: {buf}", 10, 35)
+            draw_text("Type point index → Space/Comma → Next step (step {}/3)".format(curve_step), 10, 60)
+            draw_text("Enter - confirm point, Backspace - delete digit, L - line, D - delete, P - point, F - fill", 10, 85)
 
         # Инструкция по управлению
         draw_text("Arrow keys/mouse drag - rotate, Mouse wheel/+/- - zoom, F1 - toggle labels", 10, HEIGHT-30)
