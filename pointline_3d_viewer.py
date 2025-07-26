@@ -65,6 +65,7 @@ current_polygon = []  # список индексов для текущего п
 polygon_step = 1
 
 current_fill = ""  # строка для ввода индекса полигона в режиме fill
+point_index_input = ""  # строка для ввода индекса точки в режиме polygon
 
 # Переменные для управления мышью
 mouse_dragging = False
@@ -102,7 +103,7 @@ def handle_input():
     global current_line, line_step, angle_x, angle_y, d
     global mouse_dragging, last_mouse_pos, current_delete
     global right_mouse_dragging, camera_pos, show_labels
-    global current_polygon, polygon_step, current_fill
+    global current_polygon, polygon_step, current_fill, point_index_input
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -144,6 +145,7 @@ def handle_input():
                     input_mode = "polygon"
                     current_polygon = []
                     polygon_step = 1
+                    point_index_input = ""
                 elif event.key == pygame.K_f:
                     input_mode = "fill"
                     current_fill = ""
@@ -188,6 +190,7 @@ def handle_input():
                     input_mode = "polygon"
                     current_polygon = []
                     polygon_step = 1
+                    point_index_input = ""
                 elif event.key == pygame.K_f:
                     input_mode = "fill"
                     current_fill = ""
@@ -221,6 +224,7 @@ def handle_input():
                     input_mode = "polygon"
                     current_polygon = []
                     polygon_step = 1
+                    point_index_input = ""
                 elif event.key == pygame.K_f:
                     input_mode = "fill"
                     current_fill = ""
@@ -232,8 +236,17 @@ def handle_input():
 
             elif input_mode == "polygon":
                 if event.key == pygame.K_RETURN:
+                    # Если в буфере ввода есть число — добавим его в текущий полигон
+                    if point_index_input.strip():
+                        if point_index_input.strip().isdigit():
+                            idx = int(point_index_input.strip()) - 1  # -1 для индексации с 0
+                            if 0 <= idx < len(points):
+                                current_polygon.append(idx)
+                        point_index_input = ""
+
+                    # Если полигон достаточно большой — добавляем или удаляем
                     if len(current_polygon) >= 3:
-                        new_poly = {"indices": current_polygon, "filled": False}
+                        new_poly = {"indices": current_polygon.copy(), "filled": False}
                         if tuple(current_polygon) in [tuple(p["indices"]) for p in polygons]:
                             polygons[:] = [p for p in polygons if tuple(p["indices"]) != tuple(current_polygon)]
                         else:
@@ -242,32 +255,57 @@ def handle_input():
                         polygon_step = 1
                     elif current_polygon:
                         polygon_step += 1
+
+                    point_index_input = ""
+
                 elif event.key == pygame.K_BACKSPACE:
-                    if current_polygon:
+                    # Если в буфере есть что-то — удаляем последний символ
+                    if point_index_input:
+                        point_index_input = point_index_input[:-1]
+                    # Иначе — удаляем последний индекс из полигона (откат)
+                    elif current_polygon:
                         current_polygon.pop()
                         polygon_step = max(1, polygon_step - 1)
                     else:
                         input_mode = "point"
                         polygon_step = 1
+                        point_index_input = ""
+
+                # При пробеле или запятой — добавляем число в полигон и сбрасываем буфер
+                elif event.key == pygame.K_SPACE or event.unicode == ',':
+                    if point_index_input.strip().isdigit():
+                        idx = int(point_index_input.strip()) - 1  # -1 для индексации с 0
+                        if 0 <= idx < len(points):
+                            current_polygon.append(idx)
+                            polygon_step += 1
+                    point_index_input = ""
+
                 elif event.key == pygame.K_l:
                     input_mode = "line"
                     current_line = {"p1": "", "p2": ""}
                     line_step = 1
+                    point_index_input = ""
+
                 elif event.key == pygame.K_d:
                     input_mode = "delete"
                     current_delete = None
+                    point_index_input = ""
+
                 elif event.key == pygame.K_p:
                     input_mode = "point"
                     current_polygon = []
                     polygon_step = 1
+                    point_index_input = ""
+
                 elif event.key == pygame.K_f:
                     input_mode = "fill"
                     current_fill = ""
+                    point_index_input = ""
+
                 else:
+                    # Накопление цифр в буфере ввода
                     if event.unicode.isdigit():
-                        idx = int(event.unicode) - 1
-                        if 0 <= idx < len(points):
-                            current_polygon.append(idx)
+                        point_index_input += event.unicode
 
             elif input_mode == "fill":
                 if event.key == pygame.K_RETURN:
@@ -289,6 +327,7 @@ def handle_input():
                     input_mode = "polygon"
                     current_polygon = []
                     polygon_step = 1
+                    point_index_input = ""
                 elif event.key == pygame.K_f:
                     input_mode = "point"
                     current_fill = ""
@@ -474,8 +513,8 @@ def draw_scene():
             draw_text("Enter - delete point, Backspace - cancel, L - line, D - point, P - polygon, F - fill", 10, 35)
         elif input_mode == "polygon":
             poly_str = ",".join(str(i+1) for i in current_polygon) if current_polygon else ""
-            draw_text(f"[POLYGON] Points: {poly_str}", 10, 10)
-            draw_text("Enter - add point/finish (>=3), Backspace - remove last, L - line, D - delete, P - point, F - fill", 10, 35)
+            draw_text(f"[POLYGON] Points: {poly_str} Current: {point_index_input}", 10, 10)
+            draw_text("Enter - finish (>=3), Space - add point, Backspace - remove, L - line, D - delete, P - point, F - fill", 10, 35)
         elif input_mode == "fill":
             draw_text(f"[FILL] Enter polygon: {current_fill}", 10, 10)
             draw_text("Enter - toggle fill, Backspace - delete digit, L - line, D - delete, P - polygon, F - point", 10, 35)
