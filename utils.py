@@ -1,7 +1,7 @@
 import json
 import tkinter as tk
 from tkinter import filedialog
-from model import points, lines, polygons, curves
+from model import state  # Импортируем объект состояния
 
 def save_to_json():
     try:
@@ -15,10 +15,10 @@ def save_to_json():
         if not file_path:
             return
         data = {
-            "points": points,
-            "lines": lines,
-            "polygons": polygons,
-            "curves": curves
+            "points": state.points,
+            "lines": state.lines,
+            "polygons": state.polygons,
+            "curves": state.curves
         }
         with open(file_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -39,10 +39,11 @@ def load_from_json():
             return
         with open(file_path, "r") as f:
             data = json.load(f)
-        points[:] = [tuple(p) for p in data.get("points", [])]
-        lines[:] = [tuple(l) for l in data.get("lines", [])]
-        polygons[:] = [{"indices": list(p["indices"]), "filled": p.get("filled", False)} for p in data.get("polygons", [])]
-        curves[:] = [list(c) for c in data.get("curves", [])]
+        # Обновляем списки в state, модифицируя существующие списки через срезы
+        state.points[:] = [tuple(p) for p in data.get("points", [])]
+        state.lines[:] = [tuple(l) for l in data.get("lines", [])]
+        state.polygons[:] = [{"indices": list(p["indices"]), "filled": p.get("filled", False)} for p in data.get("polygons", [])]
+        state.curves[:] = [list(c) for c in data.get("curves", [])]
         print(f"[✔] Загружено из {file_path}")
     except Exception as e:
         print(f"[✖] Ошибка загрузки: {e}")

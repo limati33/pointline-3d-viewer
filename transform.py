@@ -1,6 +1,6 @@
 import math
 from config import WIDTH, HEIGHT
-from model import camera_pos, d
+from model import state  # импортируем объект состояния
 
 def rotate_point(x, y, z, angle_x, angle_y):
     cos_x, sin_x = math.cos(angle_x), math.sin(angle_x)
@@ -15,14 +15,15 @@ def rotate_point(x, y, z, angle_x, angle_y):
     return x, y, z
 
 def project_point(x, y, z):
-    x -= camera_pos[0]
-    y -= camera_pos[1]
-    z -= camera_pos[2]
+    # Отнимаем позицию камеры из координат точки
+    x -= state.camera_pos[0]
+    y -= state.camera_pos[1]
+    z -= state.camera_pos[2]
 
-    if d + z == 0:
+    if state.d + z == 0:
         z += 0.01
 
-    factor = d / (d + z)
+    factor = state.d / (state.d + z)
     factor = max(min(factor, 10), -10)
 
     x2d = x * factor * WIDTH / 4 + WIDTH / 2
