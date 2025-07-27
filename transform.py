@@ -1,39 +1,39 @@
-from math import cos, sin
-from model import camera_pos, d
+import math
 from config import WIDTH, HEIGHT
+from model import camera_pos, d
 
-def rotate_point(x, y, z, ax, ay):
-    y2 = y * cos(ax) - z * sin(ax)
-    z2 = y * sin(ax) + z * cos(ax)
-    x2 = x * cos(ay) + z2 * sin(ay)
-    z3 = -x * sin(ay) + z2 * cos(ay)
-    return x2, y2, z3
+def rotate_point(x, y, z, angle_x, angle_y):
+    cos_x, sin_x = math.cos(angle_x), math.sin(angle_x)
+    cos_y, sin_y = math.cos(angle_y), math.sin(angle_y)
 
-def project_3d_to_2d(x, y, z):
+    # Вращение вокруг оси X
+    y, z = y * cos_x - z * sin_x, y * sin_x + z * cos_x
+
+    # Вращение вокруг оси Y
+    x, z = x * cos_y + z * sin_y, -x * sin_y + z * cos_y
+
+    return x, y, z
+
+def project_point(x, y, z):
     x -= camera_pos[0]
     y -= camera_pos[1]
     z -= camera_pos[2]
-    factor = d / (d + z) if (d + z) != 0 else 1
-    factor = min(max(factor, -10), 10)
+
+    if d + z == 0:
+        z += 0.01
+
+    factor = d / (d + z)
+    factor = max(min(factor, 10), -10)
+
     x2d = x * factor * WIDTH / 4 + WIDTH / 2
     y2d = -y * factor * HEIGHT / 4 + HEIGHT / 2
-    x2d = max(min(x2d, 32767), -32768)
-    y2d = max(min(y2d, 32767), -32768)
-    return x2d, y2d
 
-def interpolate(a, b, t):
-    return (
-        a[0] + (b[0] - a[0]) * t,
-        a[1] + (b[1] - a[1]) * t,
-        a[2] + (b[2] - a[2]) * t
-    )
+    return int(x2d), int(y2d)
 
-def quadratic_bezier(t, p0, p1, p2):
-    """Вычисление точки на квадратичной Безье в 3D."""
-    u = 1 - t
-    u2 = u * u
-    t2 = t * t
-    x = u2 * p0[0] + 2 * u * t * p1[0] + t2 * p2[0]
-    y = u2 * p0[1] + 2 * u * t * p1[1] + t2 * p2[1]
-    z = u2 * p0[2] + 2 * u * t * p1[2] + t2 * p2[2]
-    return x, y, z
+def interpolate(p1, p2, t):
+    return [p1[i] * (1 - t) + p2[i] * t for i in range(3)]
+
+def quadratic_bezier(p0, p1, p2, t):
+    a = interpolate(p0, p1, t)
+    b = interpolate(p1, p2, t)
+    return interpolate(a, b, t)

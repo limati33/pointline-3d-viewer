@@ -1,38 +1,46 @@
-# Параметры проекции и вращения
-d = 4.0
-angle_x = 0.0
-angle_y = 0.0
-rotation_speed = 0.05
-mouse_sensitivity = 0.005
+class State:
+    def __init__(self):
+        # Параметры проекции и вращения
+        self.d = 4.0
+        self.angle_x = 0.0
+        self.angle_y = 0.0
+        self.rotation_speed = 0.05
+        self.mouse_sensitivity = 0.005
 
-points = []
-lines = []
-polygons = []
-curves = []
+        # Объекты
+        self.points = []
+        self.lines = []
+        self.polygons = []
+        self.curves = []
 
-input_mode = "point"
-current_point = {"x": "", "y": "", "z": ""}
-coord_order = ["x", "y", "z"]
-coord_index = 0
+        # Состояния ввода
+        self.input_mode = "point"
+        self.current_point = {"x": "", "y": "", "z": ""}
+        self.coord_order = ["x", "y", "z"]
+        self.coord_index = 0
 
-current_line = {"p1": "", "p2": ""}
-line_step = 1
+        self.current_line = {"p1": "", "p2": ""}
+        self.line_step = 1
+        self.current_delete = None
 
-current_delete = None
+        self.current_polygon = []
+        self.polygon_step = 1
 
-current_polygon = []
-polygon_step = 1
+        self.current_fill = ""
+        self.point_index_input = ""
 
-current_fill = ""
-point_index_input = ""
+        self.current_curve = []
+        self.curve_step = 1
+        self.curve_color = (255, 128, 0)
 
-current_curve = []
-curve_step = 1
-curve_color = (255, 128, 0)
+        # Камера
+        self.mouse_dragging = False
+        self.last_mouse_pos = None
+        self.right_mouse_dragging = False
+        self.camera_pos = [0.0, 0.0, -5.0]
 
-mouse_dragging = False
-last_mouse_pos = None
-camera_pos = [0.0, 0.0, -5.0]
-right_mouse_dragging = False
+        # UI
+        self.show_labels = True
 
-show_labels = True
+# Создание одного общего объекта состояния
+state = State()

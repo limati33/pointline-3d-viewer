@@ -93,8 +93,13 @@ def draw_quadratic_bezier(p0, p1, p2, color=(255, 128, 0), steps=30):
         pygame.draw.line(_SCREEN, color, (x1, y1), (x2, y2), 2)
 
 def draw_scene(screen, font):
-    set_render_context(screen, font)
-    _SCREEN.fill((0, 0, 0))
+    # set_render_context(screen, font)
+    global _SCREEN, _FONT, _FONT_SMALL
+    _SCREEN = screen
+    _FONT = font
+    _FONT_SMALL = pygame.font.SysFont("arial", 12)
+
+    screen.fill((0, 0, 0))
 
     # Оси с делениями и метками
     origin = project_point(0, 0, 0)
