@@ -15,20 +15,19 @@ from utils import save_to_json, load_from_json
 
 def handle_input():
     global input_mode, current_point, coord_index
-    global current_line, line_step, current_delete
-    global current_polygon, polygon_step
-    global current_fill, point_index_input
-    global current_curve, curve_step
-    global points, lines, polygons, curves
-    global angle_x, angle_y, d
-    global mouse_dragging, last_mouse_pos, right_mouse_dragging, camera_pos, show_labels
+    global current_line, line_step, angle_x, angle_y, d
+    global mouse_dragging, last_mouse_pos, current_delete
+    global right_mouse_dragging, camera_pos, show_labels
+    global current_polygon, polygon_step, current_fill, point_index_input
+    global curve_input, curve_step, current_curve
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             exit()
 
-        if event.type == pygame.KEYDOWN:
+        elif event.type == pygame.KEYDOWN:
+            print(f"Key pressed: {event.key}, unicode: '{event.unicode}', mode: {input_mode}")
             if event.key == pygame.K_F1:
                 show_labels = not show_labels
                 continue
@@ -44,10 +43,10 @@ def handle_input():
                                 y = float(current_point['y'])
                                 z = float(current_point['z'])
                                 if abs(x) > 1000 or abs(y) > 1000 or abs(z) > 1000:
-                                    raise ValueError("Координаты должны быть от -1000 до 1000")
+                                    raise ValueError("Coordinates must be between -1000 and 1000")
                                 points.append((x, y, z))
                             except ValueError as e:
-                                print(f"Ошибка: {e}")
+                                print(f"Error: {e}")
                             current_point = {"x": "", "y": "", "z": ""}
                             coord_index = 0
                 elif event.key == pygame.K_BACKSPACE:
@@ -69,9 +68,9 @@ def handle_input():
                     current_fill = ""
                 elif event.key == pygame.K_c:
                     input_mode = "curve"
-                    current_curve = []
+                    current_curve = {"p0": "", "p1": "", "p2": ""}  # словарь, а не список
                     curve_step = 1
-                    point_index_input = ""
+                    curve_input = ""  # сброс буфера
                 else:
                     if event.unicode.isdigit() or event.unicode in '.-':
                         current_point[coord] += event.unicode
@@ -117,11 +116,6 @@ def handle_input():
                 elif event.key == pygame.K_f:
                     input_mode = "fill"
                     current_fill = ""
-                elif event.key == pygame.K_c:
-                    input_mode = "curve"
-                    current_curve = []
-                    curve_step = 1
-                    point_index_input = ""
                 else:
                     if event.unicode.isdigit():
                         if line_step == 1:
@@ -157,11 +151,6 @@ def handle_input():
                 elif event.key == pygame.K_f:
                     input_mode = "fill"
                     current_fill = ""
-                elif event.key == pygame.K_c:
-                    input_mode = "curve"
-                    current_curve = []
-                    curve_step = 1
-                    point_index_input = ""
                 else:
                     if event.unicode.isdigit():
                         idx = int(event.unicode) - 1
@@ -170,12 +159,15 @@ def handle_input():
 
             elif input_mode == "polygon":
                 if event.key == pygame.K_RETURN:
+                    # Если в буфере ввода есть число — добавим его в текущий полигон
                     if point_index_input.strip():
                         if point_index_input.strip().isdigit():
-                            idx = int(point_index_input.strip()) - 1
+                            idx = int(point_index_input.strip()) - 1  # -1 для индексации с 0
                             if 0 <= idx < len(points):
                                 current_polygon.append(idx)
                         point_index_input = ""
+
+                    # Если полигон достаточно большой — добавляем или удаляем
                     if len(current_polygon) >= 3:
                         new_poly = {"indices": current_polygon.copy(), "filled": False}
                         if tuple(current_polygon) in [tuple(p["indices"]) for p in polygons]:
@@ -186,10 +178,14 @@ def handle_input():
                         polygon_step = 1
                     elif current_polygon:
                         polygon_step += 1
+
                     point_index_input = ""
+
                 elif event.key == pygame.K_BACKSPACE:
+                    # Если в буфере есть что-то — удаляем последний символ
                     if point_index_input:
                         point_index_input = point_index_input[:-1]
+                    # Иначе — удаляем последний индекс из полигона (откат)
                     elif current_polygon:
                         current_polygon.pop()
                         polygon_step = max(1, polygon_step - 1)
@@ -197,37 +193,40 @@ def handle_input():
                         input_mode = "point"
                         polygon_step = 1
                         point_index_input = ""
+
+                # При пробеле или запятой — добавляем число в полигон и сбрасываем буфер
                 elif event.key == pygame.K_SPACE or event.unicode == ',':
                     if point_index_input.strip().isdigit():
-                        idx = int(point_index_input.strip()) - 1
+                        idx = int(point_index_input.strip()) - 1  # -1 для индексации с 0
                         if 0 <= idx < len(points):
                             current_polygon.append(idx)
                             polygon_step += 1
                     point_index_input = ""
+
                 elif event.key == pygame.K_l:
                     input_mode = "line"
                     current_line = {"p1": "", "p2": ""}
                     line_step = 1
                     point_index_input = ""
+
                 elif event.key == pygame.K_d:
                     input_mode = "delete"
                     current_delete = None
                     point_index_input = ""
+
                 elif event.key == pygame.K_p:
                     input_mode = "point"
                     current_polygon = []
                     polygon_step = 1
                     point_index_input = ""
+
                 elif event.key == pygame.K_f:
                     input_mode = "fill"
                     current_fill = ""
                     point_index_input = ""
-                elif event.key == pygame.K_c:
-                    input_mode = "curve"
-                    current_curve = []
-                    curve_step = 1
-                    point_index_input = ""
+
                 else:
+                    # Накопление цифр в буфере ввода
                     if event.unicode.isdigit():
                         point_index_input += event.unicode
 
@@ -255,11 +254,6 @@ def handle_input():
                 elif event.key == pygame.K_f:
                     input_mode = "point"
                     current_fill = ""
-                elif event.key == pygame.K_c:
-                    input_mode = "curve"
-                    current_curve = []
-                    curve_step = 1
-                    point_index_input = ""
                 else:
                     if event.unicode.isdigit():
                         current_fill += event.unicode
