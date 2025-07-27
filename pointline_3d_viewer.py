@@ -68,8 +68,8 @@ polygon_step = 1
 current_fill = ""  # строка для ввода индекса полигона в режиме fill
 point_index_input = ""  # строка для ввода индекса точки в режиме polygon
 
-current_curve = {"p0": "", "p1": "", "p2": ""}
-curve_step = 1
+current_curve = []
+curve_step = 0
 curve_input = ""               # буфер ввода для curve
 curve_color = (255,128,0)
 
@@ -222,6 +222,7 @@ def handle_input():
                             lines[:] = [(p1, p2) for p1, p2 in lines if p1 != idx and p2 != idx]
                             lines[:] = [(p1 - (1 if p1 > idx else 0), p2 - (1 if p2 > idx else 0)) for p1, p2 in lines]
                             polygons[:] = [{"indices": [i - (1 if i > idx else 0) for i in poly["indices"]], "filled": poly["filled"]} for poly in polygons if idx not in poly["indices"]]
+                            curves[:] = [[i - (1 if i > idx else 0) for i in curve] for curve in curves if idx not in curve]
                         current_delete = None
                 elif event.key == pygame.K_BACKSPACE:
                     current_delete = None
@@ -349,54 +350,64 @@ def handle_input():
 
             elif input_mode == "curve":
                 if event.key == pygame.K_RETURN:
-                    # если в буфере ещё число — примем его
-                    if curve_input.strip().isdigit():
-                        idx = int(curve_input.strip()) - 1
+                    if point_index_input.strip().isdigit():
+                        idx = int(point_index_input.strip()) - 1
                         if 0 <= idx < len(points):
-                            current_curve[f"p{curve_step-1}"] = idx
-                    curve_input = ""
-
-                    # если набрали все три — сохраняем/удаляем кривую
-                    if curve_step == 3 and all(str(current_curve[k]).isdigit() for k in ("p0","p1","p2")):
-                        key = (current_curve["p0"], current_curve["p1"], current_curve["p2"])
-                        exists = [tuple(c.values()) for c in curves]
-                        if key in exists:
-                            curves[:] = [c for c in curves if tuple(c.values()) != key]
+                            current_curve.append(idx)
+                    point_index_input = ""
+                    if len(current_curve) == 3:
+                        new_curve = current_curve.copy()
+                        if new_curve in curves:
+                            curves.remove(new_curve)
                         else:
-                            curves.append(current_curve.copy())
-                        # сброс
-                        current_curve = {"p0": "", "p1": "", "p2": ""}
+                            curves.append(new_curve)
+                        current_curve = []
                         curve_step = 1
-                    else:
-                        # готовимся к вводу следующей точки
+                    elif current_curve:
                         curve_step = min(curve_step + 1, 3)
-
                 elif event.key == pygame.K_BACKSPACE:
-                    if curve_input:
-                        curve_input = curve_input[:-1]
-                    elif curve_step > 1:
-                        # откат шага и очистка предыдущего значения
-                        curve_step -= 1
-                        current_curve[f"p{curve_step-1}"] = ""
+                    if point_index_input:
+                        point_index_input = point_index_input[:-1]
+                    elif current_curve:
+                        current_curve.pop()
+                        curve_step = max(1, curve_step - 1)
                     else:
                         input_mode = "point"
-
-                elif event.key in (pygame.K_SPACE,) or event.unicode == ',':
-                    # завершить ввод текущего числа
-                    if curve_input.strip().isdigit():
-                        idx = int(curve_input.strip()) - 1
+                        curve_step = 1
+                        point_index_input = ""
+                elif event.key == pygame.K_SPACE or event.unicode == ',':
+                    if point_index_input.strip().isdigit():
+                        idx = int(point_index_input.strip()) - 1
                         if 0 <= idx < len(points):
-                            current_curve[f"p{curve_step-1}"] = idx
+                            current_curve.append(idx)
                             curve_step = min(curve_step + 1, 3)
-                    curve_input = ""
-
+                    point_index_input = ""
+                elif event.key == pygame.K_l:
+                    input_mode = "line"
+                    current_line = {"p1": "", "p2": ""}
+                    line_step = 1
+                    point_index_input = ""
+                elif event.key == pygame.K_d:
+                    input_mode = "delete"
+                    current_delete = None
+                    point_index_input = ""
                 elif event.key == pygame.K_p:
+                    input_mode = "polygon"
+                    current_polygon = []
+                    polygon_step = 1
+                    point_index_input = ""
+                elif event.key == pygame.K_f:
+                    input_mode = "fill"
+                    current_fill = ""
+                    point_index_input = ""
+                elif event.key == pygame.K_c:
                     input_mode = "point"
-
+                    current_curve = []
+                    curve_step = 1
+                    point_index_input = ""
                 else:
-                    # накапливаем цифры
                     if event.unicode.isdigit():
-                        curve_input += event.unicode
+                        point_index_input += event.unicode
 
             if event.key == pygame.K_LEFTBRACKET:
                 save_to_json()
@@ -467,7 +478,8 @@ def save_to_json():
         data = {
             "points": points,
             "lines": lines,
-            "polygons": polygons
+            "polygons": polygons,   # каждый полигон — {"indices": [...], "filled": True/False}
+            "curves": curves        # каждый curve — {"p0": int, "p1": int, "p2": int}
         }
         with open(file_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -476,7 +488,7 @@ def save_to_json():
         print(f"[✖] Failed to save: {e}")
 
 def load_from_json():
-    global points, lines, polygons
+    global points, lines, polygons, curves
     try:
         root = tk.Tk()
         root.withdraw()
@@ -489,9 +501,30 @@ def load_from_json():
             return
         with open(file_path, "r") as f:
             data = json.load(f)
+
+        # Точки и линии
         points[:] = [tuple(p) for p in data.get("points", [])]
-        lines[:] = [tuple(l) for l in data.get("lines", [])]
-        polygons[:] = [{"indices": list(p["indices"]), "filled": p.get("filled", False)} for p in data.get("polygons", [])]
+        lines[:] = [tuple(l)   for l in data.get("lines",  [])]
+
+        # Полигоны: индексы + состояние filled
+        polygons[:] = [
+            {
+                "indices": list(poly.get("indices", [])),
+                "filled": bool(poly.get("filled", False))
+            }
+            for poly in data.get("polygons", [])
+        ]
+
+        # Кривые: только валидные (три целых индекса в диапазоне)
+        raw_curves = data.get("curves", [])
+        curves[:] = []
+        for c in raw_curves:
+            if all(isinstance(c.get(k), int) and 0 <= c[k] < len(points)
+                   for k in ("p0", "p1", "p2")):
+                curves.append({"p0": c["p0"], "p1": c["p1"], "p2": c["p2"]})
+            else:
+                print(f"[!] Skipped invalid curve: {c}")
+
         print(f"[✔] Loaded from {file_path}")
     except Exception as e:
         print(f"[✖] Failed to load: {e}")
@@ -597,23 +630,28 @@ def draw_scene():
             draw_text(f"[FILL] Enter polygon: {current_fill}", 10, 10)
             draw_text("Enter - toggle fill, Backspace - delete digit, L - line, D - delete, P - polygon, F - point", 10, 35)
         elif input_mode == "curve":
-            c0 = current_curve['p0']
-            c1 = current_curve['p1']
-            c2 = current_curve['p2']
+            # Получаем текущую точку из буфера (аналогично другим)
             buf = curve_input
-            # Показываем выбранные индексы точек (если выбраны, иначе пусто)
-            selected_points = []
-            for idx in (c0, c1, c2):
-                if isinstance(idx, int) and 0 <= idx < len(points):
-                    selected_points.append(str(idx + 1))
-                else:
-                    selected_points.append("")
-            selected_str = ", ".join(selected_points)
+            current_point_index = ""
+            if buf:
+                current_point_index = buf
+            elif curve_step == 0:
+                current_point_index = ""
+            elif curve_step == 1:
+                current_point_index = ""
+            elif curve_step == 2:
+                current_point_index = ""
 
-            draw_text(f"[CURVE] Points selected: {selected_str}", 10, 10)
-            draw_text(f"Input buffer: {buf}", 10, 35)
-            draw_text("Type point index → Space/Comma → Next step (step {}/3)".format(curve_step), 10, 60)
-            draw_text("Enter - confirm point, Backspace - delete digit, L - line, D - delete, P - point, F - fill", 10, 85)
+            # Формируем строку с уже выбранными точками
+            point_labels = []
+            for idx in (current_curve["p0"], current_curve["p1"], current_curve["p2"]):
+                if isinstance(idx, int):
+                    point_labels.append(str(idx + 1))
+                else:
+                    point_labels.append("")
+
+            draw_text(f"[CURVE] Points: {','.join(point_labels)} Current: {buf}", 10, 10)
+            draw_text("Enter - confirm, Backspace - delete digit, L - line, D - delete, P - point, F - fill", 10, 35)
 
         # Инструкция по управлению
         draw_text("Arrow keys/mouse drag - rotate, Mouse wheel/+/- - zoom, F1 - toggle labels", 10, HEIGHT-30)
