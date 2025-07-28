@@ -51,7 +51,7 @@ def handle_input():
                     state.current_fill = ""
                 elif event.key == pygame.K_c:
                     state.input_mode = "curve"
-                    state.current_curve = {"p0": "", "p1": "", "p2": ""}  # словарь, а не список
+                    state.current_curve = []
                     state.curve_step = 1
                     state.curve_input = ""  # сброс буфера
                 else:
