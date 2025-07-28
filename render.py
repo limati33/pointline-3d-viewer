@@ -39,6 +39,8 @@ def project_point(x, y, z):
     f = state.d / z
     xp = int(_SCREEN.get_width() / 2 + x * f * 100)
     yp = int(_SCREEN.get_height() / 2 - y * f * 100)
+    xp = max(-32768, min(32767, xp))
+    yp = max(-32768, min(32767, yp))
     return xp, yp
 
 def draw_text(text, x, y, font=None, color=(255,255,255)):
