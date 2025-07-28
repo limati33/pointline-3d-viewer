@@ -4,6 +4,7 @@ class State:
         self.d = 4.0
         self.angle_x = 0.0
         self.angle_y = 0.0
+        self.zoom = 1.0
         self.rotation_speed = 0.05
         self.mouse_sensitivity = 0.005
 
@@ -35,7 +36,7 @@ class State:
 
         # Камера
         self.mouse_dragging = False
-        self.last_mouse_pos = None
+        self.last_mouse_pos = (0, 0)
         self.right_mouse_dragging = False
         self.camera_pos = [0.0, 0.0, -5.0]
 

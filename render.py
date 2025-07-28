@@ -55,25 +55,31 @@ def draw_panel(x, y, width, height, color=(50, 50, 50, 128)):
     _SCREEN.blit(s, (x, y))
 
 def draw_poly_grid(poly_idx_list, steps=10):
-    # Сетка внутри четырёхугольника A-B-C-D
     verts = [state.points[i] for i in poly_idx_list]
-    if len(verts) != 4:
+    n = len(verts)
+    if n < 3:
         return
-    A, B, C, D = verts
-    for i in range(steps + 1):
-        t = i / steps
-        # линии между AB и DC
-        x1, y1, z1 = interpolate(A, B, t)
-        x2, y2, z2 = interpolate(D, C, t)
-        p1 = project_point(*rotate_point(x1, y1, z1, state.angle_x, state.angle_y))
-        p2 = project_point(*rotate_point(x2, y2, z2, state.angle_x, state.angle_y))
-        pygame.draw.line(_SCREEN, (200,200,200), p1, p2, 1)
-        # линии между AD и BC
-        x3, y3, z3 = interpolate(A, D, t)
-        x4, y4, z4 = interpolate(B, C, t)
-        p3 = project_point(*rotate_point(x3, y3, z3, state.angle_x, state.angle_y))
-        p4 = project_point(*rotate_point(x4, y4, z4, state.angle_x, state.angle_y))
-        pygame.draw.line(_SCREEN, (200,200,200), p3, p4, 1)
+
+    # Идём по каждой грани полигона
+    for i in range(n):
+        a = verts[i]
+        b = verts[(i + 1) % n]
+        for j in range(steps + 1):
+            t = j / steps
+            x, y, z = interpolate(a, b, t)
+            px, py = project_point(*rotate_point(x, y, z, state.angle_x, state.angle_y))
+            pygame.draw.circle(_SCREEN, (180,180,180), (px, py), 1)
+
+    # От центра к каждой точке (радиальные лучи)
+    cx = sum(v[0] for v in verts) / n
+    cy = sum(v[1] for v in verts) / n
+    cz = sum(v[2] for v in verts) / n
+    for v in verts:
+        for j in range(steps + 1):
+            t = j / steps
+            x, y, z = interpolate((cx, cy, cz), v, t)
+            px, py = project_point(*rotate_point(x, y, z, state.angle_x, state.angle_y))
+            pygame.draw.circle(_SCREEN, (220,220,220), (px, py), 1)
 
 def draw_quadratic_bezier(p0, p1, p2, color=(255, 128, 0), steps=30):
     for i in range(steps):
@@ -140,7 +146,7 @@ def draw_scene(screen, font):
     for curve in state.curves:
         if len(curve) == 3:
             p0, p1, p2 = [project_point(*rotate_point(*state.points[i], state.angle_x, state.angle_y)) for i in curve]
-            draw_quadratic_bezier(p0, p1, p2, state.curve_color, steps=state.curve_step)
+            draw_quadratic_bezier(p0, p1, p2, state.curve_color, steps=state.curve_step * 10)
 
     # Точки (с сглаженным кругом)
     for i, pt in enumerate(state.points):
