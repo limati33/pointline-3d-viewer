@@ -1,9 +1,60 @@
 import pygame
+import math
 from model import state
 from utils import save_to_json, load_from_json
 
+def switch_mode(new_mode):
+    """Переключает режим ввода и сбрасывает соответствующие параметры."""
+    state.input_mode = new_mode
+    if new_mode == "point":
+        state.current_point = {"x": "", "y": "", "z": ""}
+        state.coord_index = 0
+    elif new_mode == "line":
+        state.current_line = {"p1": "", "p2": ""}
+        state.line_step = 1
+    elif new_mode == "delete":
+        state.current_delete = None
+    elif new_mode == "polygon":
+        state.current_polygon = []
+        state.polygon_step = 1
+        state.point_index_input = ""
+    elif new_mode == "fill":
+        state.current_fill = ""
+    elif new_mode == "curve":
+        state.current_curve = []
+        state.curve_step = 1
+        state.curve_input = ""
+
+def reset_camera():
+    """Сбрасывает параметры камеры к начальным значениям."""
+    state.angle_x = 0.0
+    state.angle_y = 0.0
+    state.angle_z = 0.0
+    state.camera_pos = [0.0, 0.0, 0.0]
+    state.camera_distance = 5.0
+    state.d = 4.0
+
+def is_valid_index_input(current_input, unicode_char, max_index):
+    """Проверяет, является ли ввод допустимым индексом."""
+    if not unicode_char.isdigit():
+        return False
+    new_input = current_input + unicode_char
+    if new_input == '0' or (new_input.isdigit() and int(new_input) > max_index):
+        return False
+    return True
+
 def handle_input():
     global state
+    # Словарь для переходов по клавишам
+    mode_keys = {
+        pygame.K_t: "point",  # Добавлена клавиша T для режима Point
+        pygame.K_l: "line",
+        pygame.K_d: "delete",
+        pygame.K_p: "polygon",
+        pygame.K_f: "fill",
+        pygame.K_c: "curve",
+    }
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
@@ -14,49 +65,45 @@ def handle_input():
             if event.key == pygame.K_F1:
                 state.show_labels = not state.show_labels
                 continue
+            elif event.key == pygame.K_r:  # Сброс камеры
+                reset_camera()
+                continue
+
+            # Переключение режима
+            if event.key in mode_keys:
+                switch_mode(mode_keys[event.key])
+                continue
 
             if state.input_mode == "point":
                 coord = state.coord_order[state.coord_index]
                 if event.key == pygame.K_RETURN:
-                    if state.current_point[coord] != "":
-                        state.coord_index += 1
-                        if state.coord_index >= 3:
-                            try:
-                                x = float(state.current_point['x'])
-                                y = float(state.current_point['y'])
-                                z = float(state.current_point['z'])
-                                if abs(x) > 1000 or abs(y) > 1000 or abs(z) > 1000:
-                                    raise ValueError("Coordinates must be between -1000 and 1000")
-                                state.points.append((x, y, z))
-                            except ValueError as e:
-                                print(f"Error: {e}")
-                            state.current_point = {"x": "", "y": "", "z": ""}
-                            state.coord_index = 0
+                    if state.current_point[coord]:
+                        try:
+                            value = float(state.current_point[coord])
+                            if abs(value) > 1000:
+                                raise ValueError("Coordinates must be between -1000 and 1000")
+                            state.current_point[coord] = str(value)
+                            state.coord_index += 1
+                            if state.coord_index >= 3:
+                                state.points.append((
+                                    float(state.current_point['x']),
+                                    float(state.current_point['y']),
+                                    float(state.current_point['z'])
+                                ))
+                                state.current_point = {"x": "", "y": "", "z": ""}
+                                state.coord_index = 0
+                        except ValueError:
+                            state.current_point[coord] = ""  # Сбрасываем при ошибке
+                    else:
+                        state.current_point[coord] = ""
                 elif event.key == pygame.K_BACKSPACE:
                     state.current_point[coord] = state.current_point[coord][:-1]
-                elif event.key == pygame.K_l:
-                    state.input_mode = "line"
-                    state.current_line = {"p1": "", "p2": ""}
-                    state.line_step = 1
-                elif event.key == pygame.K_d:
-                    state.input_mode = "delete"
-                    state.current_delete = None
-                elif event.key == pygame.K_p:
-                    state.input_mode = "polygon"
-                    state.current_polygon = []
-                    state.polygon_step = 1
-                    state.point_index_input = ""
-                elif event.key == pygame.K_f:
-                    state.input_mode = "fill"
-                    state.current_fill = ""
-                elif event.key == pygame.K_c:
-                    state.input_mode = "curve"
-                    state.current_curve = []
-                    state.curve_step = 1
-                    state.curve_input = ""  # сброс буфера
-                else:
-                    if event.unicode.isdigit() or event.unicode in '.-':
-                        state.current_point[coord] += event.unicode
+                elif event.unicode in '0123456789.-' and len(state.current_point[coord]) < 10:
+                    if event.unicode == '-' and (state.current_point[coord].startswith('-') or state.current_point[coord]):
+                        continue
+                    if event.unicode == '.' and '.' in state.current_point[coord]:
+                        continue
+                    state.current_point[coord] += event.unicode
 
             elif state.input_mode == "line":
                 if event.key == pygame.K_RETURN:
@@ -84,27 +131,15 @@ def handle_input():
                     elif state.line_step == 2:
                         state.line_step = 1
                         state.current_line['p2'] = ""
-                elif event.key == pygame.K_l:
-                    state.input_mode = "point"
-                    state.current_line = {"p1": "", "p2": ""}
-                    state.line_step = 1
-                elif event.key == pygame.K_d:
-                    state.input_mode = "delete"
-                    state.current_delete = None
-                elif event.key == pygame.K_p:
-                    state.input_mode = "polygon"
-                    state.current_polygon = []
-                    state.polygon_step = 1
-                    state.point_index_input = ""
-                elif event.key == pygame.K_f:
-                    state.input_mode = "fill"
-                    state.current_fill = ""
-                else:
-                    if event.unicode.isdigit():
-                        if state.line_step == 1:
-                            state.current_line['p1'] += event.unicode
-                        elif state.line_step == 2:
-                            state.current_line['p2'] += event.unicode
+                elif is_valid_index_input(
+                    state.current_line['p1'] if state.line_step == 1 else state.current_line['p2'],
+                    event.unicode,
+                    len(state.points)
+                ):
+                    if state.line_step == 1:
+                        state.current_line['p1'] += event.unicode
+                    elif state.line_step == 2:
+                        state.current_line['p2'] += event.unicode
 
             elif state.input_mode == "delete":
                 if event.key == pygame.K_RETURN:
@@ -119,38 +154,19 @@ def handle_input():
                         state.current_delete = None
                 elif event.key == pygame.K_BACKSPACE:
                     state.current_delete = None
-                elif event.key == pygame.K_l:
-                    state.input_mode = "line"
-                    state.current_line = {"p1": "", "p2": ""}
-                    state.line_step = 1
-                elif event.key == pygame.K_d:
-                    state.input_mode = "point"
-                    state.current_delete = None
-                elif event.key == pygame.K_p:
-                    state.input_mode = "polygon"
-                    state.current_polygon = []
-                    state.polygon_step = 1
-                    state.point_index_input = ""
-                elif event.key == pygame.K_f:
-                    state.input_mode = "fill"
-                    state.current_fill = ""
-                else:
-                    if event.unicode.isdigit():
-                        idx = int(event.unicode) - 1
-                        if 0 <= idx < len(state.points):
-                            state.current_delete = idx
+                elif is_valid_index_input(str(state.current_delete + 1) if state.current_delete is not None else "", event.unicode, len(state.points)):
+                    idx = int(event.unicode) - 1
+                    if 0 <= idx < len(state.points):
+                        state.current_delete = idx
 
             elif state.input_mode == "polygon":
                 if event.key == pygame.K_RETURN:
-                    # Если в буфере ввода есть число — добавим его в текущий полигон
                     if state.point_index_input.strip():
                         if state.point_index_input.strip().isdigit():
-                            idx = int(state.point_index_input.strip()) - 1  # -1 для индексации с 0
+                            idx = int(state.point_index_input.strip()) - 1
                             if 0 <= idx < len(state.points):
                                 state.current_polygon.append(idx)
                         state.point_index_input = ""
-
-                    # Если полигон достаточно большой — добавляем или удаляем
                     if len(state.current_polygon) >= 3:
                         new_poly = {"indices": state.current_polygon.copy(), "filled": False}
                         if tuple(state.current_polygon) in [tuple(p["indices"]) for p in state.polygons]:
@@ -161,57 +177,24 @@ def handle_input():
                         state.polygon_step = 1
                     elif state.current_polygon:
                         state.polygon_step += 1
-
                     state.point_index_input = ""
-
                 elif event.key == pygame.K_BACKSPACE:
-                    # Если в буфере есть что-то — удаляем последний символ
                     if state.point_index_input:
                         state.point_index_input = state.point_index_input[:-1]
-                    # Иначе — удаляем последний индекс из полигона (откат)
                     elif state.current_polygon:
                         state.current_polygon.pop()
                         state.polygon_step = max(1, state.polygon_step - 1)
                     else:
-                        state.input_mode = "point"
-                        state.polygon_step = 1
-                        state.point_index_input = ""
-
-                # При пробеле или запятой — добавляем число в полигон и сбрасываем буфер
+                        switch_mode("point")
                 elif event.key == pygame.K_SPACE or event.unicode == ',':
                     if state.point_index_input.strip().isdigit():
-                        idx = int(state.point_index_input.strip()) - 1  # -1 для индексации с 0
+                        idx = int(state.point_index_input.strip()) - 1
                         if 0 <= idx < len(state.points):
                             state.current_polygon.append(idx)
                             state.polygon_step += 1
                     state.point_index_input = ""
-
-                elif event.key == pygame.K_l:
-                    state.input_mode = "line"
-                    state.current_line = {"p1": "", "p2": ""}
-                    state.line_step = 1
-                    state.point_index_input = ""
-
-                elif event.key == pygame.K_d:
-                    state.input_mode = "delete"
-                    state.current_delete = None
-                    state.point_index_input = ""
-
-                elif event.key == pygame.K_p:
-                    state.input_mode = "point"
-                    state.current_polygon = []
-                    state.polygon_step = 1
-                    state.point_index_input = ""
-
-                elif event.key == pygame.K_f:
-                    state.input_mode = "fill"
-                    state.current_fill = ""
-                    state.point_index_input = ""
-
-                else:
-                    # Накопление цифр в буфере ввода
-                    if event.unicode.isdigit():
-                        state.point_index_input += event.unicode
+                elif is_valid_index_input(state.point_index_input, event.unicode, len(state.points)):
+                    state.point_index_input += event.unicode
 
             elif state.input_mode == "fill":
                 if event.key == pygame.K_RETURN:
@@ -222,24 +205,8 @@ def handle_input():
                     state.current_fill = ""
                 elif event.key == pygame.K_BACKSPACE:
                     state.current_fill = state.current_fill[:-1]
-                elif event.key == pygame.K_l:
-                    state.input_mode = "line"
-                    state.current_line = {"p1": "", "p2": ""}
-                    state.line_step = 1
-                elif event.key == pygame.K_d:
-                    state.input_mode = "delete"
-                    state.current_delete = None
-                elif event.key == pygame.K_p:
-                    state.input_mode = "polygon"
-                    state.current_polygon = []
-                    state.polygon_step = 1
-                    state.point_index_input = ""
-                elif event.key == pygame.K_f:
-                    state.input_mode = "point"
-                    state.current_fill = ""
-                else:
-                    if event.unicode.isdigit():
-                        state.current_fill += event.unicode
+                elif is_valid_index_input(state.current_fill, event.unicode, len(state.polygons)):
+                    state.current_fill += event.unicode
 
             elif state.input_mode == "curve":
                 if event.key == pygame.K_RETURN:
@@ -265,9 +232,7 @@ def handle_input():
                         state.current_curve.pop()
                         state.curve_step = max(1, state.curve_step - 1)
                     else:
-                        state.input_mode = "point"
-                        state.curve_step = 1
-                        state.point_index_input = ""
+                        switch_mode("point")
                 elif event.key == pygame.K_SPACE or event.unicode == ',':
                     if state.point_index_input.strip().isdigit():
                         idx = int(state.point_index_input.strip()) - 1
@@ -275,32 +240,8 @@ def handle_input():
                             state.current_curve.append(idx)
                             state.curve_step = min(state.curve_step + 1, 3)
                     state.point_index_input = ""
-                elif event.key == pygame.K_l:
-                    state.input_mode = "line"
-                    state.current_line = {"p1": "", "p2": ""}
-                    state.line_step = 1
-                    state.point_index_input = ""
-                elif event.key == pygame.K_d:
-                    state.input_mode = "delete"
-                    state.current_delete = None
-                    state.point_index_input = ""
-                elif event.key == pygame.K_p:
-                    state.input_mode = "polygon"
-                    state.current_polygon = []
-                    state.polygon_step = 1
-                    state.point_index_input = ""
-                elif event.key == pygame.K_f:
-                    state.input_mode = "fill"
-                    state.current_fill = ""
-                    state.point_index_input = ""
-                elif event.key == pygame.K_c:
-                    state.input_mode = "point"
-                    state.current_curve = []
-                    state.curve_step = 1
-                    state.point_index_input = ""
-                else:
-                    if event.unicode.isdigit():
-                        state.point_index_input += event.unicode
+                elif is_valid_index_input(state.point_index_input, event.unicode, len(state.points)):
+                    state.point_index_input += event.unicode
 
             if event.key == pygame.K_LEFTBRACKET:
                 save_to_json()
@@ -311,17 +252,23 @@ def handle_input():
             if event.button == 1:
                 state.mouse_dragging = True
                 state.last_mouse_pos = event.pos
+            elif event.button == 2:
+                state.middle_mouse_dragging = True
+                state.last_mouse_pos = event.pos
             elif event.button == 3:
                 state.right_mouse_dragging = True
                 state.last_mouse_pos = event.pos
             elif event.button == 4:
-                state.d = min(state.d + 0.5, 10)
+                state.camera_distance = max(1, state.camera_distance - 0.5)
             elif event.button == 5:
-                state.d = max(state.d - 0.5, 1)
+                state.camera_distance = min(20, state.camera_distance + 0.5)
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
                 state.mouse_dragging = False
+                state.last_mouse_pos = None
+            elif event.button == 2:
+                state.middle_mouse_dragging = False
                 state.last_mouse_pos = None
             elif event.button == 3:
                 state.right_mouse_dragging = False
@@ -331,12 +278,16 @@ def handle_input():
             if state.mouse_dragging and state.last_mouse_pos:
                 dx, dy = event.pos[0] - state.last_mouse_pos[0], event.pos[1] - state.last_mouse_pos[1]
                 state.angle_y += dx * state.mouse_sensitivity
-                state.angle_x -= dy * state.mouse_sensitivity
+                state.angle_x = max(-math.pi / 2, min(math.pi / 2, state.angle_x - dy * state.mouse_sensitivity))
                 state.last_mouse_pos = event.pos
             elif state.right_mouse_dragging and state.last_mouse_pos:
                 dx, dy = event.pos[0] - state.last_mouse_pos[0], event.pos[1] - state.last_mouse_pos[1]
-                state.camera_pos[0] -= dx * 0.01
-                state.camera_pos[1] += dy * 0.01
+                state.camera_pos[0] -= dx * 0.01 * state.camera_distance
+                state.camera_pos[1] += dy * 0.01 * state.camera_distance
+                state.last_mouse_pos = event.pos
+            elif state.middle_mouse_dragging and state.last_mouse_pos:
+                dx = event.pos[0] - state.last_mouse_pos[0]
+                state.angle_z += dx * state.mouse_sensitivity
                 state.last_mouse_pos = event.pos
 
     keys = pygame.key.get_pressed()
@@ -345,14 +296,14 @@ def handle_input():
     if keys[pygame.K_s]:
         state.camera_pos[2] -= 0.2
     if keys[pygame.K_EQUALS] or keys[pygame.K_KP_PLUS]:
-        state.d = min(state.d + 0.1, 10)
+        state.camera_distance = max(1, state.camera_distance - 0.1)
     if keys[pygame.K_MINUS] or keys[pygame.K_KP_MINUS]:
-        state.d = max(state.d - 0.1, 1)
+        state.camera_distance = min(20, state.camera_distance + 0.1)
     if keys[pygame.K_LEFT]:
         state.angle_y -= state.rotation_speed
     if keys[pygame.K_RIGHT]:
         state.angle_y += state.rotation_speed
     if keys[pygame.K_UP]:
-        state.angle_x -= state.rotation_speed
+        state.angle_x = max(-math.pi / 2, min(math.pi / 2, state.angle_x - state.rotation_speed))
     if keys[pygame.K_DOWN]:
-        state.angle_x += state.rotation_speed
+        state.angle_x = max(-math.pi / 2, min(math.pi / 2, state.angle_x + state.rotation_speed))

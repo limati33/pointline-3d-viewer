@@ -14,8 +14,8 @@ def set_render_context(screen, font):
     global _SCREEN, _FONT, _FONT_LARGE, _FONT_SMALL
     _SCREEN = screen
     _FONT = font
-    _FONT_LARGE = pygame.font.SysFont("arial", 24, bold=True)
-    _FONT_SMALL = pygame.font.SysFont("arial", 16)
+    _FONT_LARGE = pygame.font.SysFont("arial", 28, bold=True)
+    _FONT_SMALL = pygame.font.SysFont("arial", 20)
 
 def project_point(x, y, z):
     # Смещение по позиции камеры
@@ -33,9 +33,15 @@ def project_point(x, y, z):
     sin_y = math.sin(state.angle_y)
     x, z = x * cos_y + z * sin_y, -x * sin_y + z * cos_y
 
-    # Проекция
-    if z == 0:
-        z = 0.0001
+    # Вращение вокруг Z
+    cos_z = math.cos(state.angle_z)
+    sin_z = math.sin(state.angle_z)
+    x, y = x * cos_z - y * sin_z, x * sin_z + y * cos_z
+
+    # Проекция с учетом расстояния камеры
+    z += state.camera_distance
+    if z < 0.1:  # Избегаем деления на ноль
+        z = 0.1
     f = state.d / z
     xp = int(_SCREEN.get_width() / 2 + x * f * 100)
     yp = int(_SCREEN.get_height() / 2 - y * f * 100)
@@ -49,7 +55,7 @@ def draw_text(text, x, y, font=None, color=(255,255,255)):
     surf = font.render(text, True, color)
     _SCREEN.blit(surf, (x, y))
 
-def draw_panel(x, y, width, height, color=(50, 50, 50, 128)):
+def draw_panel(x, y, width, height, color=(50, 50, 50, 180)):
     s = pygame.Surface((width, height), pygame.SRCALPHA)
     s.fill(color)
     _SCREEN.blit(s, (x, y))
@@ -95,7 +101,7 @@ def draw_scene(screen, font):
     global _SCREEN, _FONT, _FONT_SMALL
     _SCREEN = screen
     _FONT = font
-    _FONT_SMALL = pygame.font.SysFont("arial", 12)
+    _FONT_SMALL = pygame.font.SysFont("arial", 20)
 
     screen.fill((0, 0, 0))
 
@@ -114,13 +120,14 @@ def draw_scene(screen, font):
                 pygame.draw.line(_SCREEN, color, origin, p, 2 if i == 10 else 1)
                 if state.show_labels:
                     draw_text(f"{i*sign}", p[0], p[1], font=_FONT_SMALL, color=color)
+
     # Названия осей
     if state.show_labels:
-        draw_panel(5, 55, 120, 75, (50, 50, 50, 128))
-        draw_text("Оси:", 10, 60, font=_FONT_LARGE, color=(255, 255, 255))
-        draw_text("X: Красная", 10, 85, font=_FONT_SMALL, color=(255, 0, 0))
-        draw_text("Y: Зелёная", 10, 100, font=_FONT_SMALL, color=(0, 255, 0))
-        draw_text("Z: Синяя", 10, 115, font=_FONT_SMALL, color=(0, 128, 255))
+        draw_panel(5, 105, 140, 85, (50, 50, 50, 180))
+        draw_text("Оси:", 10, 110, font=_FONT_LARGE, color=(255, 255, 255))
+        draw_text("X: Красная", 10, 135, font=_FONT_SMALL, color=(255, 0, 0))
+        draw_text("Y: Зелёная", 10, 150, font=_FONT_SMALL, color=(0, 255, 0))
+        draw_text("Z: Синяя", 10, 165, font=_FONT_SMALL, color=(0, 128, 255))
 
     # Линии
     for p1_idx, p2_idx in state.lines:
@@ -171,54 +178,60 @@ def draw_scene(screen, font):
         mode_color = mode_colors.get(state.input_mode, (255, 255, 255))
 
         # Панель статуса ввода
-        draw_panel(5, 5, 400, 50, (50, 50, 50, 128))
+        draw_panel(5, 5, 400, 80, (50, 50, 50, 180))
         draw_text(f"Режим: {state.input_mode.title()}", 10, 10, font=_FONT_LARGE, color=mode_color)
         if state.input_mode == "point":
             coord = state.coord_order[state.coord_index]
-            draw_text(f"[ТОЧКА] Введите {coord}: {state.current_point[coord]}", 10, 35, font=_FONT_SMALL)
+            draw_text(f"[ТОЧКА] Введите {coord} (-1000..1000): {state.current_point[coord]}", 10, 35, font=_FONT_SMALL)
+            draw_text(f"Пример: 3.14, -5.2", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
         elif state.input_mode == "line":
-            draw_text(f"[ЛИНИЯ] p1={state.current_line['p1']}, p2={state.current_line['p2']}", 10, 35, font=_FONT_SMALL)
+            draw_text(f"[ЛИНИЯ] p1={state.current_line['p1']}, p2={state.current_line['p2']} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
+            draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
         elif state.input_mode == "delete":
             idx = state.current_delete + 1 if state.current_delete is not None else ''
-            draw_text(f"[УДАЛЕНИЕ] Точка: {idx}", 10, 35, font=_FONT_SMALL)
+            draw_text(f"[УДАЛЕНИЕ] Точка: {idx} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
+            draw_text(f"Введите индекс точки", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
         elif state.input_mode == "polygon":
             poly_str = ",".join(str(i+1) for i in state.current_polygon) if state.current_polygon else ""
-            draw_text(f"[ПОЛИГОН] Точки: {poly_str} Текущая: {state.point_index_input}", 10, 35, font=_FONT_SMALL)
+            draw_text(f"[ПОЛИГОН] Точки: {poly_str} Текущая: {state.point_index_input} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
+            draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
         elif state.input_mode == "fill":
-            draw_text(f"[ЗАЛИВКА] Полигон: {state.current_fill}", 10, 35, font=_FONT_SMALL)
+            draw_text(f"[ЗАЛИВКА] Полигон: {state.current_fill} (1..{len(state.polygons)})", 10, 35, font=_FONT_SMALL)
+            draw_text(f"Введите индекс полигона", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
         elif state.input_mode == "curve":
             curve_str = ",".join(str(i+1) for i in state.current_curve) if state.current_curve else ""
-            draw_text(f"[КРИВАЯ] Точки: {curve_str} Текущая: {state.point_index_input}", 10, 35, font=_FONT_SMALL)
+            draw_text(f"[КРИВАЯ] Точки: {curve_str} Текущая: {state.point_index_input} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
+            draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
 
         # Панель управления
-        draw_panel(5, HEIGHT - 80, 400, 75, (50, 50, 50, 128))
-        draw_text("Управление:", 10, HEIGHT - 75, font=_FONT_LARGE, color=(255, 255, 255))
-        draw_text("Enter: Подтвердить, Backspace: Удалить, Space: Добавить", 10, HEIGHT - 50, font=_FONT_SMALL)
-        draw_text("L: Линия, D: Удаление, P: Полигон, F: Заливка, C: Кривая, F1: Метки", 10, HEIGHT - 35, font=_FONT_SMALL)
-        draw_text("Стрелки/Мышь: Вращение, Колесо/+/-: Масштаб, [: Сохранить, ]: Загрузить", 10, HEIGHT - 20, font=_FONT_SMALL)
+        draw_panel(5, HEIGHT - 100, 450, 90, (50, 50, 50, 180))
+        draw_text("Управление:", 10, HEIGHT - 95, font=_FONT_LARGE, color=(255, 255, 255))
+        draw_text("Enter: Подтвердить | Backspace: Удалить | Space: Добавить", 10, HEIGHT - 65, font=_FONT_SMALL, color=(200, 200, 200))
+        draw_text("T: Точка | L: Линия | D: Удаление | P: Полигон | F: Заливка | C: Кривая", 10, HEIGHT - 45, font=_FONT_SMALL, color=(200, 200, 200))
+        draw_text("F1: Метки | R: Сброс камеры | Стрелки/Мышь: Вращение | +/-: Масштаб", 10, HEIGHT - 25, font=_FONT_SMALL, color=(200, 200, 200))
 
         # Списки справа: точки, полигоны, кривые
-        x0 = WIDTH - 260
+        x0 = WIDTH - 300
         y0 = 10
-        list_height = 20 + max(len(state.points) * 18 + 20 + len(state.polygons) * 18 + 20 + len(state.curves) * 18, 100)
-        draw_panel(x0 - 10, y0, 250, list_height, (50, 50, 50, 128))
+        list_height = 30 + max(len(state.points) * 22 + 30 + len(state.polygons) * 22 + 30 + len(state.curves) * 22, 120)
+        draw_panel(x0 - 10, y0, 290, list_height, (50, 50, 50, 180))
         # Точки
-        draw_text("Точки:", x0, y0, font=_FONT_LARGE, color=(200, 200, 50))
+        draw_text("Точки:", x0, y0, font=_FONT_LARGE, color=(255, 255, 100))
         for i, pt in enumerate(state.points):
-            line = f"{i+1}. {pt[0]:.2f}/{pt[1]:.2f}/{pt[2]:.2f}"
-            draw_text(line, x0, y0 + 25 + i * 18, font=_FONT_SMALL, color=(180, 180, 180))
+            line = f"{i+1}. ({pt[0]:.2f}, {pt[1]:.2f}, {pt[2]:.2f})"
+            draw_text(line, x0, y0 + 30 + i * 22, font=_FONT_SMALL, color=(200, 200, 200))
         # Полигоны
-        y1 = y0 + 25 + len(state.points) * 18 + 20
-        draw_text("Полигоны:", x0, y1, font=_FONT_LARGE, color=(200, 200, 50))
+        y1 = y0 + 30 + len(state.points) * 22 + 30
+        draw_text("Полигоны:", x0, y1, font=_FONT_LARGE, color=(255, 255, 100))
         for i, poly in enumerate(state.polygons):
             inds = ",".join(str(j+1) for j in poly["indices"])
             filled = "Да" if poly.get("filled") else "Нет"
-            draw_text(f"{i+1}. ({inds}) Заливка: {filled}", x0, y1 + 25 + i * 18, font=_FONT_SMALL, color=(180, 180, 180))
+            draw_text(f"{i+1}. ({inds}) Заливка: {filled}", x0, y1 + 30 + i * 22, font=_FONT_SMALL, color=(200, 200, 200))
         # Кривые
-        y2 = y1 + 25 + len(state.polygons) * 18 + 20
-        draw_text("Кривые:", x0, y2, font=_FONT_LARGE, color=(200, 200, 50))
+        y2 = y1 + 30 + len(state.polygons) * 22 + 30
+        draw_text("Кривые:", x0, y2, font=_FONT_LARGE, color=(255, 255, 100))
         for i, curve in enumerate(state.curves):
             inds = ",".join(str(j+1) for j in curve)
-            draw_text(f"{i+1}. ({inds})", x0, y2 + 25 + i * 18, font=_FONT_SMALL, color=(180, 180, 180))
+            draw_text(f"{i+1}. ({inds})", x0, y2 + 30 + i * 22, font=_FONT_SMALL, color=(200, 200, 200))
 
     pygame.display.flip()

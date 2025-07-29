@@ -1,7 +1,7 @@
 import pygame
 from config import WIDTH, HEIGHT
-from render import draw_scene
-from input_handler import handle_event
+from render import draw_scene, set_render_context
+from input_handler import handle_input
 
 def main():
     pygame.init()
@@ -10,14 +10,12 @@ def main():
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", 24)
 
+    # Инициализация контекста рендеринга
+    set_render_context(screen, font)
+
     running = True
     while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            else:
-                handle_event(event)
-
+        handle_input()  # Вызываем handle_input вместо handle_event
         draw_scene(screen, font)
         pygame.display.flip()
         clock.tick(60)
