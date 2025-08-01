@@ -61,7 +61,7 @@ def handle_input():
             exit()
 
         elif event.type == pygame.KEYDOWN:
-            print(f"Key pressed: {event.key}, unicode: '{event.unicode}', mode: {state.input_mode}")
+            print(f"Key pressed: {event.key}, unicode: '{event.unicode}', mode: {state.input_mode}") #test
             if event.key == pygame.K_F1:
                 state.show_labels = not state.show_labels
                 continue
