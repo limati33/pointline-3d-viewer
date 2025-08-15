@@ -2,6 +2,7 @@ import pygame
 import math
 from model import state
 from utils import save_to_json, load_from_json
+from modification import modification_state, handle_modification_input
 
 def switch_mode(new_mode):
     """Переключает режим ввода и сбрасывает соответствующие параметры."""
@@ -47,7 +48,7 @@ def handle_input():
     global state
     # Словарь для переходов по клавишам
     mode_keys = {
-        pygame.K_t: "point",  # Добавлена клавиша T для режима Point
+        pygame.K_t: "point",
         pygame.K_l: "line",
         pygame.K_d: "delete",
         pygame.K_p: "polygon",
@@ -55,18 +56,26 @@ def handle_input():
         pygame.K_c: "curve",
     }
 
+    if modification_state.active:
+        handle_modification_input()
+        return
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             exit()
 
         elif event.type == pygame.KEYDOWN:
-            print(f"Key pressed: {event.key}, unicode: '{event.unicode}', mode: {state.input_mode}") #test
+            print(f"Key pressed: {event.key}, unicode: '{event.unicode}', mode: {state.input_mode}")
             if event.key == pygame.K_F1:
                 state.show_labels = not state.show_labels
                 continue
-            elif event.key == pygame.K_r:  # Сброс камеры
+            elif event.key == pygame.K_r:
                 reset_camera()
+                continue
+            elif event.key == pygame.K_TAB:
+                modification_state.active = True
+                state.input_mode = None
                 continue
 
             # Переключение режима

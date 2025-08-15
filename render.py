@@ -4,6 +4,7 @@ import math
 from model import state
 from transform import rotate_point, interpolate, quadratic_bezier
 from config import WIDTH, HEIGHT
+from modification import modification_state
 
 _SCREEN = None
 _FONT = None
@@ -18,29 +19,20 @@ def set_render_context(screen, font):
     _FONT_SMALL = pygame.font.SysFont("arial", 20)
 
 def project_point(x, y, z):
-    # Смещение по позиции камеры
     x -= state.camera_pos[0]
     y -= state.camera_pos[1]
     z -= state.camera_pos[2]
-
-    # Вращение вокруг X
     cos_x = math.cos(state.angle_x)
     sin_x = math.sin(state.angle_x)
     y, z = y * cos_x - z * sin_x, y * sin_x + z * cos_x
-
-    # Вращение вокруг Y
     cos_y = math.cos(state.angle_y)
     sin_y = math.sin(state.angle_y)
     x, z = x * cos_y + z * sin_y, -x * sin_y + z * cos_y
-
-    # Вращение вокруг Z
     cos_z = math.cos(state.angle_z)
     sin_z = math.sin(state.angle_z)
     x, y = x * cos_z - y * sin_z, x * sin_z + y * cos_z
-
-    # Проекция с учетом расстояния камеры
     z += state.camera_distance
-    if z < 0.1:  # Избегаем деления на ноль
+    if z < 0.1:
         z = 0.1
     f = state.d / z
     xp = int(_SCREEN.get_width() / 2 + x * f * 100)
@@ -65,8 +57,6 @@ def draw_poly_grid(poly_idx_list, steps=10):
     n = len(verts)
     if n < 3:
         return
-
-    # Идём по каждой грани полигона
     for i in range(n):
         a = verts[i]
         b = verts[(i + 1) % n]
@@ -75,8 +65,6 @@ def draw_poly_grid(poly_idx_list, steps=10):
             x, y, z = interpolate(a, b, t)
             px, py = project_point(*rotate_point(x, y, z, state.angle_x, state.angle_y))
             pygame.draw.circle(_SCREEN, (180,180,180), (px, py), 1)
-
-    # От центра к каждой точке (радиальные лучи)
     cx = sum(v[0] for v in verts) / n
     cy = sum(v[1] for v in verts) / n
     cz = sum(v[2] for v in verts) / n
@@ -102,7 +90,6 @@ def draw_scene(screen, font):
     _SCREEN = screen
     _FONT = font
     _FONT_SMALL = pygame.font.SysFont("arial", 20)
-
     screen.fill((0, 0, 0))
 
     # Оси с делениями и метками
@@ -112,7 +99,6 @@ def draw_scene(screen, font):
         ('Y', (0, 255, 0), (0, 1, 0)),
         ('Z', (0, 128, 255), (0, 0, 1)),
     ]:
-        # линии осей
         for sign in (-1, 1):
             for i in range(1, 21):
                 dx, dy, dz = [v * i * sign for v in vec]
@@ -121,7 +107,6 @@ def draw_scene(screen, font):
                 if state.show_labels:
                     draw_text(f"{i*sign}", p[0], p[1], font=_FONT_SMALL, color=color)
 
-    # Названия осей
     if state.show_labels:
         draw_panel(5, 105, 140, 85, (50, 50, 50, 180))
         draw_text("Оси:", 10, 110, font=_FONT_LARGE, color=(255, 255, 255))
@@ -137,17 +122,42 @@ def draw_scene(screen, font):
         p2 = project_point(*r2)
         pygame.draw.line(_SCREEN, (255, 255, 255), p1, p2, 2)
 
-    # Полигоны (+ сетка для четырёхугольников)
+    # Полигоны
     for poly in state.polygons:
         idxs = poly["indices"]
         proj = [project_point(*rotate_point(*state.points[i], state.angle_x, state.angle_y)) for i in idxs]
         if len(proj) >= 3 and poly.get("filled"):
             pygame.draw.polygon(_SCREEN, (60, 60, 100), proj)
+        if poly.get("rounded"):
+            # Рендерим стороны как кривые Безье
+            steps = poly.get("round_steps", 10)
+            for i in range(len(idxs)):
+                p0 = state.points[idxs[i]]
+                p2 = state.points[idxs[(i + 1) % len(idxs)]]
+                # Вычисляем контрольную точку (середина, сдвинутая к центру полигона)
+                cx = sum(state.points[j][0] for j in idxs) / len(idxs)
+                cy = sum(state.points[j][1] for j in idxs) / len(idxs)
+                cz = sum(state.points[j][2] for j in idxs) / len(idxs)
+                mx = (p0[0] + p2[0]) / 2
+                my = (p0[1] + p2[1]) / 2
+                mz = (p0[2] + p2[2]) / 2
+                # Сдвигаем контрольную точку к центру для округления
+                radius = sum(math.sqrt((state.points[j][0] - cx)**2 + (state.points[j][1] - cy)**2 + (state.points[j][2] - cz)**2) for j in idxs) / len(idxs)
+                dist = math.sqrt((mx - cx)**2 + (my - cy)**2 + (mz - cz)**2)
+                if dist > 0:
+                    factor = (radius / dist) * 0.8  # Коэффициент для контроля "округлости"
+                    p1 = (cx + (mx - cx) * factor, cy + (my - cy) * factor, cz + (mz - cz) * factor)
+                else:
+                    p1 = (mx, my, mz)
+                p0_proj = project_point(*rotate_point(*p0, state.angle_x, state.angle_y))
+                p1_proj = project_point(*rotate_point(*p1, state.angle_x, state.angle_y))
+                p2_proj = project_point(*rotate_point(*p2, state.angle_x, state.angle_y))
+                draw_quadratic_bezier(p0_proj, p1_proj, p2_proj, color=(255, 255, 255), steps=steps)
         else:
-            # если не заполнен и четырёхугольник — рисуем сетку
+            # Обычный рендеринг полигона
+            pygame.draw.polygon(_SCREEN, (200, 200, 255), proj, 1)
             if len(idxs) == 4 and not poly.get("filled"):
                 draw_poly_grid(idxs, steps=10)
-        pygame.draw.polygon(_SCREEN, (200, 200, 255), proj, 1)
 
     # Кривые Безье
     for curve in state.curves:
@@ -155,7 +165,7 @@ def draw_scene(screen, font):
             p0, p1, p2 = [project_point(*rotate_point(*state.points[i], state.angle_x, state.angle_y)) for i in curve]
             draw_quadratic_bezier(p0, p1, p2, state.curve_color, steps=state.curve_step * 10)
 
-    # Точки (с сглаженным кругом)
+    # Точки
     for i, pt in enumerate(state.points):
         xr, yr, zr = rotate_point(*pt, state.angle_x, state.angle_y)
         xp, yp = project_point(xr, yr, zr)
@@ -164,70 +174,74 @@ def draw_scene(screen, font):
             draw_text(str(i+1), xp + 6, yp - 8, font=_FONT_SMALL)
             draw_text(f"({pt[0]:.2f},{pt[1]:.2f},{pt[2]:.2f})", xp + 6, yp + 8, font=_FONT_SMALL)
 
-    # HUD: режим, параметры ввода, списки
+    # HUD
     if state.show_labels:
-        # Цвета для режимов
-        mode_colors = {
-            "point": (0, 200, 0),
-            "line": (0, 128, 255),
-            "delete": (200, 0, 0),
-            "polygon": (200, 200, 0),
-            "fill": (128, 0, 128),
-            "curve": (255, 128, 0)
-        }
-        mode_color = mode_colors.get(state.input_mode, (255, 255, 255))
+        if modification_state.active:
+            draw_panel(5, 5, 400, 100, (50, 50, 50, 180))
+            draw_text("Режим: Модификация", 10, 10, font=_FONT_LARGE, color=(255, 200, 0))
+            if modification_state.current_modification is None:
+                draw_text("Выберите модификацию:", 10, 35, font=_FONT_SMALL)
+                draw_text("1 — Округлить полигон (кривые Безье)", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
+            elif modification_state.current_modification == "round_polygon":
+                draw_text(f"[ОКРУГЛИТЬ ПОЛИГОН] Полигон: {modification_state.polygon_index} (1..{len(state.polygons)})", 10, 35, font=_FONT_SMALL)
+                draw_text(f"Гладкость (1..100): {modification_state.steps}", 10, 55, font=_FONT_SMALL)
+                draw_text("Введите индекс полигона и гладкость", 10, 75, font=_FONT_SMALL, color=(180, 180, 180))
+        else:
+            mode_colors = {
+                "point": (0, 200, 0),
+                "line": (0, 128, 255),
+                "delete": (200, 0, 0),
+                "polygon": (200, 200, 0),
+                "fill": (128, 0, 128),
+                "curve": (255, 128, 0)
+            }
+            mode_color = mode_colors.get(state.input_mode, (255, 255, 255))
+            draw_panel(5, 5, 400, 80, (50, 50, 50, 180))
+            draw_text(f"Режим: {state.input_mode.title() if state.input_mode else 'None'}", 10, 10, font=_FONT_LARGE, color=mode_color)
+            if state.input_mode == "point":
+                coord = state.coord_order[state.coord_index]
+                draw_text(f"[ТОЧКА] Введите {coord} (-1000..1000): {state.current_point[coord]}", 10, 35, font=_FONT_SMALL)
+                draw_text(f"Пример: 3.14, -5.2", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
+            elif state.input_mode == "line":
+                draw_text(f"[ЛИНИЯ] p1={state.current_line['p1']}, p2={state.current_line['p2']} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
+                draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
+            elif state.input_mode == "delete":
+                idx = state.current_delete + 1 if state.current_delete is not None else ''
+                draw_text(f"[УДАЛЕНИЕ] Точка: {idx} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
+                draw_text(f"Введите индекс точки", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
+            elif state.input_mode == "polygon":
+                poly_str = ",".join(str(i+1) for i in state.current_polygon) if state.current_polygon else ""
+                draw_text(f"[ПОЛИГОН] Точки: {poly_str} Текущая: {state.point_index_input} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
+                draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
+            elif state.input_mode == "fill":
+                draw_text(f"[ЗАЛИВКА] Полигон: {state.current_fill} (1..{len(state.polygons)})", 10, 35, font=_FONT_SMALL)
+                draw_text(f"Введите индекс полигона", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
+            elif state.input_mode == "curve":
+                curve_str = ",".join(str(i+1) for i in state.current_curve) if state.current_curve else ""
+                draw_text(f"[КРИВАЯ] Точки: {curve_str} Текущая: {state.point_index_input} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
+                draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
 
-        # Панель статуса ввода
-        draw_panel(5, 5, 400, 80, (50, 50, 50, 180))
-        draw_text(f"Режим: {state.input_mode.title()}", 10, 10, font=_FONT_LARGE, color=mode_color)
-        if state.input_mode == "point":
-            coord = state.coord_order[state.coord_index]
-            draw_text(f"[ТОЧКА] Введите {coord} (-1000..1000): {state.current_point[coord]}", 10, 35, font=_FONT_SMALL)
-            draw_text(f"Пример: 3.14, -5.2", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
-        elif state.input_mode == "line":
-            draw_text(f"[ЛИНИЯ] p1={state.current_line['p1']}, p2={state.current_line['p2']} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
-            draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
-        elif state.input_mode == "delete":
-            idx = state.current_delete + 1 if state.current_delete is not None else ''
-            draw_text(f"[УДАЛЕНИЕ] Точка: {idx} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
-            draw_text(f"Введите индекс точки", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
-        elif state.input_mode == "polygon":
-            poly_str = ",".join(str(i+1) for i in state.current_polygon) if state.current_polygon else ""
-            draw_text(f"[ПОЛИГОН] Точки: {poly_str} Текущая: {state.point_index_input} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
-            draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
-        elif state.input_mode == "fill":
-            draw_text(f"[ЗАЛИВКА] Полигон: {state.current_fill} (1..{len(state.polygons)})", 10, 35, font=_FONT_SMALL)
-            draw_text(f"Введите индекс полигона", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
-        elif state.input_mode == "curve":
-            curve_str = ",".join(str(i+1) for i in state.current_curve) if state.current_curve else ""
-            draw_text(f"[КРИВАЯ] Точки: {curve_str} Текущая: {state.point_index_input} (1..{len(state.points)})", 10, 35, font=_FONT_SMALL)
-            draw_text(f"Введите индексы точек", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
-
-        # Панель управления
         draw_panel(5, HEIGHT - 100, 450, 90, (50, 50, 50, 180))
         draw_text("Управление:", 10, HEIGHT - 95, font=_FONT_LARGE, color=(255, 255, 255))
         draw_text("Enter: Подтвердить | Backspace: Удалить | Space: Добавить", 10, HEIGHT - 65, font=_FONT_SMALL, color=(200, 200, 200))
         draw_text("T: Точка | L: Линия | D: Удаление | P: Полигон | F: Заливка | C: Кривая", 10, HEIGHT - 45, font=_FONT_SMALL, color=(200, 200, 200))
-        draw_text("F1: Метки | R: Сброс камеры | Стрелки/Мышь: Вращение | +/-: Масштаб", 10, HEIGHT - 25, font=_FONT_SMALL, color=(200, 200, 200))
+        draw_text("F1: Метки | R: Сброс камеры | Tab: Модификации | Стрелки/Мышь: Вращение", 10, HEIGHT - 25, font=_FONT_SMALL, color=(200, 200, 200))
 
-        # Списки справа: точки, полигоны, кривые
         x0 = WIDTH - 300
         y0 = 10
         list_height = 30 + max(len(state.points) * 22 + 30 + len(state.polygons) * 22 + 30 + len(state.curves) * 22, 120)
         draw_panel(x0 - 10, y0, 290, list_height, (50, 50, 50, 180))
-        # Точки
         draw_text("Точки:", x0, y0, font=_FONT_LARGE, color=(255, 255, 100))
         for i, pt in enumerate(state.points):
             line = f"{i+1}. ({pt[0]:.2f}, {pt[1]:.2f}, {pt[2]:.2f})"
             draw_text(line, x0, y0 + 30 + i * 22, font=_FONT_SMALL, color=(200, 200, 200))
-        # Полигоны
         y1 = y0 + 30 + len(state.points) * 22 + 30
         draw_text("Полигоны:", x0, y1, font=_FONT_LARGE, color=(255, 255, 100))
         for i, poly in enumerate(state.polygons):
             inds = ",".join(str(j+1) for j in poly["indices"])
             filled = "Да" if poly.get("filled") else "Нет"
-            draw_text(f"{i+1}. ({inds}) Заливка: {filled}", x0, y1 + 30 + i * 22, font=_FONT_SMALL, color=(200, 200, 200))
-        # Кривые
+            rounded = "Округлён" if poly.get("rounded") else ""
+            draw_text(f"{i+1}. ({inds}) Заливка: {filled} {rounded}", x0, y1 + 30 + i * 22, font=_FONT_SMALL, color=(200, 200, 200))
         y2 = y1 + 30 + len(state.polygons) * 22 + 30
         draw_text("Кривые:", x0, y2, font=_FONT_LARGE, color=(255, 255, 100))
         for i, curve in enumerate(state.curves):
