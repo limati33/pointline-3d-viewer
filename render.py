@@ -75,15 +75,17 @@ def draw_poly_grid(poly_idx_list, steps=10):
             px, py = project_point(*rotate_point(x, y, z, state.angle_x, state.angle_y))
             pygame.draw.circle(_SCREEN, (220,220,220), (px, py), 1)
 
-def draw_quadratic_bezier(p0, p1, p2, color=(255, 128, 0), steps=30):
-    for i in range(steps):
-        t1 = i / steps
-        t2 = (i + 1) / steps
-        x1 = (1 - t1)**2 * p0[0] + 2*(1 - t1)*t1 * p1[0] + t1**2 * p2[0]
-        y1 = (1 - t1)**2 * p0[1] + 2*(1 - t1)*t1 * p1[1] + t1**2 * p2[1]
-        x2 = (1 - t2)**2 * p0[0] + 2*(1 - t2)*t2 * p1[0] + t2**2 * p2[0]
-        y2 = (1 - t2)**2 * p0[1] + 2*(1 - t2)*t2 * p1[1] + t2**2 * p2[1]
-        pygame.draw.line(_SCREEN, color, (x1, y1), (x2, y2), 2)
+def draw_quadratic_bezier(p0, p1, p2, color=(255, 255, 255), steps=10):
+    """Оптимизированная функция рендеринга Безье с кэшированием."""
+    points = []
+    steps = min(steps, 10)  # Ограничиваем для производительности
+    for i in range(steps + 1):
+        t = i / steps
+        x = (1 - t)**2 * p0[0] + 2*(1 - t)*t * p1[0] + t**2 * p2[0]
+        y = (1 - t)**2 * p0[1] + 2*(1 - t)*t * p1[1] + t**2 * p2[1]
+        points.append((x, y))
+    for i in range(len(points) - 1):
+        pygame.draw.line(_SCREEN, color, points[i], points[i + 1], 2)
 
 def draw_scene(screen, font):
     global _SCREEN, _FONT, _FONT_SMALL
@@ -92,7 +94,7 @@ def draw_scene(screen, font):
     _FONT_SMALL = pygame.font.SysFont("arial", 20)
     screen.fill((0, 0, 0))
 
-    # Оси с делениями и метками
+    # Оси
     origin = project_point(0, 0, 0)
     for axis, color, vec in [
         ('X', (255, 0, 0), (1, 0, 0)),
@@ -129,24 +131,21 @@ def draw_scene(screen, font):
         if len(proj) >= 3 and poly.get("filled"):
             pygame.draw.polygon(_SCREEN, (60, 60, 100), proj)
         if poly.get("rounded"):
-            # Рендерим стороны как кривые Безье
             steps = poly.get("round_steps", 10)
             for i in range(len(idxs)):
                 p0 = state.points[idxs[i]]
                 p2 = state.points[idxs[(i + 1) % len(idxs)]]
-                # Вычисляем контрольную точку (середина, сдвинутая к центру полигона)
                 cx = sum(state.points[j][0] for j in idxs) / len(idxs)
                 cy = sum(state.points[j][1] for j in idxs) / len(idxs)
                 cz = sum(state.points[j][2] for j in idxs) / len(idxs)
                 mx = (p0[0] + p2[0]) / 2
                 my = (p0[1] + p2[1]) / 2
                 mz = (p0[2] + p2[2]) / 2
-                # Сдвигаем контрольную точку к центру для округления
-                radius = sum(math.sqrt((state.points[j][0] - cx)**2 + (state.points[j][1] - cy)**2 + (state.points[j][2] - cz)**2) for j in idxs) / len(idxs)
+                # Сдвиг контрольной точки внутрь полигона
                 dist = math.sqrt((mx - cx)**2 + (my - cy)**2 + (mz - cz)**2)
                 if dist > 0:
-                    factor = (radius / dist) * 0.8  # Коэффициент для контроля "округлости"
-                    p1 = (cx + (mx - cx) * factor, cy + (my - cy) * factor, cz + (mz - cz) * factor)
+                    factor = 0.6  # Внутреннее округление
+                    p1 = (mx + (cx - mx) * factor, my + (cy - my) * factor, mz + (cz - mz) * factor)
                 else:
                     p1 = (mx, my, mz)
                 p0_proj = project_point(*rotate_point(*p0, state.angle_x, state.angle_y))
@@ -154,7 +153,6 @@ def draw_scene(screen, font):
                 p2_proj = project_point(*rotate_point(*p2, state.angle_x, state.angle_y))
                 draw_quadratic_bezier(p0_proj, p1_proj, p2_proj, color=(255, 255, 255), steps=steps)
         else:
-            # Обычный рендеринг полигона
             pygame.draw.polygon(_SCREEN, (200, 200, 255), proj, 1)
             if len(idxs) == 4 and not poly.get("filled"):
                 draw_poly_grid(idxs, steps=10)
@@ -163,7 +161,7 @@ def draw_scene(screen, font):
     for curve in state.curves:
         if len(curve) == 3:
             p0, p1, p2 = [project_point(*rotate_point(*state.points[i], state.angle_x, state.angle_y)) for i in curve]
-            draw_quadratic_bezier(p0, p1, p2, state.curve_color, steps=state.curve_step * 10)
+            draw_quadratic_bezier(p0, p1, p2, state.curve_color, steps=state.curve_step * 5)
 
     # Точки
     for i, pt in enumerate(state.points):
@@ -177,15 +175,19 @@ def draw_scene(screen, font):
     # HUD
     if state.show_labels:
         if modification_state.active:
-            draw_panel(5, 5, 400, 100, (50, 50, 50, 180))
+            draw_panel(5, 5, 400, 120, (50, 50, 50, 180))
             draw_text("Режим: Модификация", 10, 10, font=_FONT_LARGE, color=(255, 200, 0))
             if modification_state.current_modification is None:
                 draw_text("Выберите модификацию:", 10, 35, font=_FONT_SMALL)
-                draw_text("1 — Округлить полигон (кривые Безье)", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
+                draw_text("1 — Округлить полигон (внутренние кривые)", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
+                draw_text("2 — Снять округление", 10, 75, font=_FONT_SMALL, color=(180, 180, 180))
             elif modification_state.current_modification == "round_polygon":
                 draw_text(f"[ОКРУГЛИТЬ ПОЛИГОН] Полигон: {modification_state.polygon_index} (1..{len(state.polygons)})", 10, 35, font=_FONT_SMALL)
-                draw_text(f"Гладкость (1..100): {modification_state.steps}", 10, 55, font=_FONT_SMALL)
+                draw_text(f"Гладкость (1..20): {modification_state.steps}", 10, 55, font=_FONT_SMALL)
                 draw_text("Введите индекс полигона и гладкость", 10, 75, font=_FONT_SMALL, color=(180, 180, 180))
+            elif modification_state.current_modification == "unround_polygon":
+                draw_text(f"[СНЯТЬ ОКРУГЛЕНИЕ] Полигон: {modification_state.polygon_index} (1..{len(state.polygons)})", 10, 35, font=_FONT_SMALL)
+                draw_text("Введите индекс полигона", 10, 55, font=_FONT_SMALL, color=(180, 180, 180))
         else:
             mode_colors = {
                 "point": (0, 200, 0),

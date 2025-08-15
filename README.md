@@ -1,6 +1,6 @@
 # 3D Model Editor
 
-A simple 3D editor for creating and manipulating points, lines, polygons, and quadratic Bezier curves in 3D space. Supports rotation, scaling, panning, saving/loading models in JSON, and a user-friendly interface with HUD.
+A simple 3D editor for creating and manipulating points, lines, polygons, and quadratic Bezier curves in 3D space. Supports rotation, scaling, panning, saving/loading models in JSON, and a modification mode for advanced shape editing, including rounding polygons into smooth inward curves.
 
 ## Controls
 
@@ -9,17 +9,21 @@ A simple 3D editor for creating and manipulating points, lines, polygons, and qu
 - **Right Mouse Drag** — Pan camera
 - **W / S** — Move camera forward/back
 - **Mouse Wheel** or **+ / -** — Zoom in/out
-- **Modes:**
+- **Tab** — Toggle between input and modification modes
+- **Input Modes:**
   - `T` (Point): Input coordinates for a new point (x, y, z, range -1000 to 1000)
   - `L` (Line): Connect two points by index
   - `D` (Delete): Delete a point by index
   - `P` (Polygon): Create a polygon by selecting point indices
   - `F` (Fill): Toggle fill for a polygon
   - `C` (Curve): Create a quadratic Bezier curve by selecting three points
+- **Modification Mode:**
+  - `1` — Round polygon: Transform polygon edges into smooth inward Bezier curves to approximate a circle (specify polygon index and smoothness level, 1-20)
+  - `2` — Unround polygon: Revert polygon to its original straight edges (specify polygon index)
 - **F1** — Toggle labels (axes, points, HUD)
 - **R** — Reset camera to default position and orientation
-- **[** — Save model to JSON
-- **]** — Load model from JSON
+- **\[** — Save model to JSON
+- **\]** — Load model from JSON
 
 ## Dependencies
 
@@ -30,7 +34,7 @@ A simple 3D editor for creating and manipulating points, lines, polygons, and qu
 
 # 3D-редактор моделей
 
-Простой 3D-редактор для создания и редактирования точек, линий, полигонов и квадратичных кривых Безье в трёхмерном пространстве. Поддерживает вращение, масштабирование, панорамирование, сохранение/загрузку моделей в JSON и удобный интерфейс с HUD.
+Простой 3D-редактор для создания и редактирования точек, линий, полигонов и квадратичных кривых Безье в трёхмерном пространстве. Поддерживает вращение, масштабирование, панорамирование, сохранение/загрузку моделей в JSON и режим модификаций для расширенного редактирования фигур, включая округление полигонов в гладкие внутренние кривые.
 
 ## Управление
 
@@ -39,17 +43,21 @@ A simple 3D editor for creating and manipulating points, lines, polygons, and qu
 - **Перетягивание правой кнопкой мыши** — Панорамирование камеры
 - **W / S** — Перемещение камеры вперёд/назад
 - **Колёсико мыши** или **+ / -** — Увеличение/уменьшение масштаба
-- **Режимы:**
+- **Tab** — Переключение между режимами ввода и модификаций
+- **Режимы ввода:**
   - `T` (Точка): Ввод координат новой точки (x, y, z, диапазон от -1000 до 1000)
   - `L` (Линия): Соединение двух точек по индексам
   - `D` (Удаление): Удаление точки по индексу
   - `P` (Полигон): Создание полигона путём выбора индексов точек
   - `F` (Заливка): Переключение заливки полигона
   - `C` (Кривая): Создание квадратичной кривой Безье путём выбора трёх точек
+- **Режим модификаций:**
+  - `1` — Округлить полигон: Преобразование сторон полигона в гладкие внутренние кривые Безье для аппроксимации окружности (указать индекс полигона и уровень гладкости, 1-20)
+  - `2` — Снять округление: Возврат полигона к исходным прямым сторонам (указать индекс полигона)
 - **F1** — Включение/выключение меток (оси, точки, HUD)
 - **R** — Сброс камеры в начальное положение и ориентацию
-- **[** — Сохранение модели в JSON
-- **]** — Загрузка модели из JSON
+- **\[** — Сохранение модели в JSON
+- **\]** — Загрузка модели из JSON
 
 ## Зависимости
 
